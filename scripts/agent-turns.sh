@@ -8,11 +8,11 @@
 # it tracks the agent in the focused pane and is blank everywhere else.
 #
 # This plugin only owns the *value*. Rendering is a plain tmux format that
-# references the option — no special airline API. With tmux-airline, register a
-# segment whose --format reads it (see the README):
+# references the option — no special airline API. With tmux-airline, a segment is
+# just a public @airline-segment-<slot> option you set with `set -g` (see the
+# README):
 #
-#   airline segment register agent --side right --tier inner \
-#     --format '#{?@agent-turns, #{@agent-turns}⟳,}'
+#   set -g @airline-segment-right-in '#{?@agent-turns, #{@agent-turns}⟳,}'
 #
 # It is agent-agnostic; Claude Code is the worked example in the README.
 #

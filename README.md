@@ -9,32 +9,32 @@ rendering and clearing.
 
 Three independent signals, each matched to the airline channel that fits it:
 
-- **Lifecycle → status badge.** A small colored `●` after the window name shows
-  which window is **working**, **wants your input**, or is **done**. Lifecycle is
-  an *event* signal, so a status lane (airline's right-of-name badge stack) is
-  the right treatment.
-- **Context pressure → health gutter.** As an agent's context window fills, a
-  severity glyph appears in the window's **left gutter** — **amber then red**.
-  Context is a *meter* (a sustained resource condition), so airline's health
-  channel fits — and unlike Claude's own in-pane context display, it's visible
-  across windows when you're *not* focused there.
+- **Lifecycle → status badge.** A small glyph after the window name shows which
+  window is **working** (`○`), **wants your input** (`◆`), or is **done** (`●`).
+  Lifecycle is an *event* signal, so airline's status lane (its right-of-name
+  badge stack) is the right treatment.
+- **Resource pressure → health gutter.** As an agent's **context window** fills —
+  or its **usage limit** approaches — a severity glyph appears in the window's
+  **left gutter**, **amber then red**. Both are *meters* (sustained resource
+  conditions), so airline's health channel fits — and unlike Claude's own in-pane
+  displays, they're visible across windows when you're *not* focused there.
 - **Turn counter → a widget you place.** A per-pane count of conversation turns,
   rendered as `<n>⟳` wherever your status line evaluates formats.
 
-The three coexist on a window: a working window (cyan `●` badge) can also be near
-its context limit (red gutter glyph) and show a turn count.
+The three coexist on a window: a working window (`○` badge) can also be near its
+context limit (red gutter glyph) and show a turn count.
 
 ## Lifecycle → status badge
 
-`scripts/agent-state.sh` lights the `agent` status lane (registered once at load)
-with a palette token via `airline status set agent <token>`:
+`scripts/agent-state.sh` lights the `agent` status key via `airline status set
+agent <level>`. airline's status channel has three fixed levels, each with its
+own glyph and color — the plugin picks the *level*, airline owns the glyph:
 
-| State | airline token | Color | In the window list |
+| State | airline level | Badge | In the window list |
 | ----- | ------------- | ----- | ------------------ |
-| `working` | `monitor` | cyan | a running system to watch |
-| `needs-input` | `alert` | orange | wants your attention |
-| `done` | `ok` | green | finished well (clears when you view & leave) |
-| `error` | `stress` | red | finished badly |
+| `working` | `active` | `○` amber | a running system to watch |
+| `needs-input` | `attention` | `◆` amber | wants your input |
+| `done` | `result` | `●` green | finished well (clears when you view & leave) |
 | `idle` / `clear` | — | — | no badge |
 
 `done` is set **`--transient`**, so airline clears the badge once you've focused
@@ -42,14 +42,20 @@ the window and moved on — the one transition this plugin can't observe.
 `working`/`needs-input` are persistent: the agent's own lifecycle supersedes them
 (working → done/needs-input; needs-input → working when you re-engage).
 
-`clear`/`idle` also clear the context **health** key, so a session reset wipes
-both airline channels at once.
+> There's no `error` state: airline's status channel has no critical/red level
+> (`result` outranks `active`; there's nothing above `attention`). A run that
+> ends badly is still "the agent wants you" — wire it to `needs-input`.
 
-## Context pressure → health
+`clear`/`idle` also clear **both** health keys this plugin drives (`ctx` and
+`usage`), so a session reset wipes every channel at once.
 
-`scripts/agent-context.sh` reports the context fill on airline's **health
-channel** under the `ctx` key (`airline health set ctx <severity>`); airline
-reduces all health contributors to the worst severity and shows one gutter glyph:
+## Resource pressure → health
+
+`scripts/agent-context.sh` reports two meters on airline's **health channel**,
+each under its own key (`airline health set <key> <severity>`); airline reduces
+all health contributors to the worst severity and shows one gutter glyph:
+
+**Context window** (`ctx` key) — how full the context is:
 
 | Context used | airline severity | In the window list |
 | ------------ | ---------------- | ------------------ |
@@ -57,20 +63,31 @@ reduces all health contributors to the worst severity and shows one gutter glyph
 | `≥ 80%` | `alert` (amber) | approaching capacity |
 | `≥ 90%` | `stress` (red) | near capacity — needs attention |
 
-The thresholds are **overridable** tmux options:
+**Usage limit** (`usage` key) — the worse of Claude's 5-hour and 7-day rate-limit
+windows (Claude.ai Pro/Max only; absent otherwise, which reads as cleared):
+
+| Usage-limit used | airline severity | In the window list |
+| ---------------- | ---------------- | ------------------ |
+| `< 80%` | — (cleared) | clean gutter |
+| `≥ 80%` | `alert` (amber) | approaching your limit |
+| `≥ 90%` | `stress` (red) | near your limit |
+
+Each meter has its own **overridable** thresholds:
 
 ```tmux
 set -g @agent-context-alert  75    # default 80
 set -g @agent-context-stress 92    # default 90
+set -g @agent-usage-alert    70    # default 80
+set -g @agent-usage-stress   85    # default 90
 ```
 
-Why a meter and not a meter *widget*: Claude already shows context usage in the
-pane — but only when you're focused there, which is exactly when you don't need
-tmux to tell you. The one moment it matters across windows is when a window is
-*nearing capacity*, and that's an attention signal — `alert`/`stress`, airline's
-existing resource-pressure vocab (the same it uses for battery and CPU).
+Why a meter and not a meter *widget*: Claude already shows context and usage in
+the pane — but only when you're focused there, which is exactly when you don't
+need tmux to tell you. The one moment they matter across windows is when a window
+is *nearing a ceiling*, and that's an attention signal — `alert`/`stress`,
+airline's existing resource-pressure vocab (the same it uses for battery and CPU).
 
-Context usage is exposed only to a Claude Code **statusLine** command, so
+Both are exposed only to a Claude Code **statusLine** command, so
 `agent-context.sh` is wired there (see below), not as a hook.
 
 ## Turn counter → a widget you place
@@ -102,26 +119,26 @@ maintains its own — no transcript parsing.
 
 Render `@agent-turns` wherever your status line evaluates formats.
 
-**With tmux-airline** — register a segment whose `--format` reads the option; you
-own its side, tier, priority, and format, airline owns the chevrons and the tier
-background:
+**With tmux-airline** — a segment is just a public `@airline-segment-<slot>`
+option you set with `set -g`; airline owns the chevrons and the tier background,
+you own the slot and the format. There are six slots (`left-out`/`mid`/`in`,
+`right-in`/`mid`/`out`):
 
 ```sh
-# right-side inner segment showing "<n>⟳", blank when there's no counter
-airline segment register agent --side right --tier inner \
-  --format '#{?@agent-turns, #{@agent-turns}⟳,}'
+# right-side inner slot showing "<n>⟳", blank when there's no counter
+set -g @airline-segment-right-in '#{?@agent-turns, #{@agent-turns}⟳,}'
 ```
 
-The `--format` is a normal tmux format, so the dynamic `#{@agent-turns}` stays
-live, and you can style it with airline's theme color options:
+The value is a normal tmux format, so the dynamic `#{@agent-turns}` stays live,
+and you can style it with airline's theme color options:
 
 ```sh
-airline segment register agent --side right --tier inner \
-  --format '#{?@agent-turns,#[fg=#{@airline-emphasized}] #{@agent-turns}⟳,}'
+set -g @airline-segment-right-in '#{?@agent-turns,#[fg=#{@airline-emphasized}] #{@agent-turns}⟳,}'
 ```
 
-Re-register the same name to change it, `airline segment unregister agent` to
-drop it, or `airline segment list` to inspect the stack.
+Edit the option to change it, `set -gu @airline-segment-right-in` to drop it, or
+`airline segment show` to inspect the slots. (A layout is the durable way to own
+the whole arrangement; a bare `set -g` is fine for one slot.)
 
 **Without tmux-airline** — append the same format to `status-right` directly:
 
@@ -134,7 +151,7 @@ The `⟳` is just text in your format — swap it for any glyph you prefer.
 ## Requirements
 
 - **tmux-airline** providing the `airline` CLI with its `status` and `health`
-  channels, for the lifecycle badge and context gutter. This plugin calls that
+  channels, for the lifecycle badge and the health gutter. This plugin calls that
   CLI; airline owns the rendering, transient clearing, and `focus-events`. No
   private airline option names are touched. (The turn counter needs only a status
   line that evaluates tmux formats — airline is the worked example, but plain
@@ -142,32 +159,44 @@ The `⟳` is just text in your format — swap it for any glyph you prefer.
 - `tmux` 3.0+. The `done` badge is `--transient`; airline enables `focus-events`
   itself the first time a transient signal is set, so its unfocus-clear works
   with no extra setup here.
+- [`jq`](https://jqlang.github.io/jq/) — **only** for the health feature
+  (`agent-context.sh`), which reads the statusLine JSON for context and usage. An
+  agent speaks JSON and jq is the tool for JSON, so it's a hard dependency there
+  rather than a hand-rolled parser; without it the script passes the JSON through
+  untouched, warns once, and skips the health update. The lifecycle badge and
+  turn counter use no JSON and need no jq.
 
 ## Install (TPM)
 
 ```tmux
-# ~/.tmux.conf — load airline first: this plugin registers its 'agent' lane
-# against the CLI airline publishes in @airline-cli at load.
+# ~/.tmux.conf — load airline first so its CLI (@airline-cli) is published
+# before the setters resolve it.
 set -g @plugin 'andrewjstryker/tmux-airline'
 set -g @plugin 'andrewjstryker/tmux-agent-tools'
 run '~/.tmux/plugins/tpm/tpm'
 ```
 
-At load the plugin registers the `agent` status lane and publishes each setter's
-path, so callers (hooks / statusLine) need not hardcode any install dir:
+At load the plugin only publishes each setter's path, so callers (hooks /
+statusLine) need not hardcode any install dir — there's no registration step
+(airline creates status keys on first `set` and its glyphs are fixed per level):
 
 ```sh
 "$(tmux show -gqv @agent-state-bin)"   needs-input   # lifecycle (status lane)
-"$(tmux show -gqv @agent-context-bin)"               # context   (health gutter, statusLine)
+"$(tmux show -gqv @agent-context-bin)"               # context + usage (health gutter, statusLine)
 "$(tmux show -gqv @agent-turns-bin)"   bump          # turn counter (a format you place)
 ```
 
-The plugin reaches the `airline` CLI through **`@airline-cli`** — the absolute
+The setters reach the `airline` CLI through **`@airline-cli`** — the absolute
 path airline publishes at load, which doubles as the contract for "airline is
-active." There's no path-guessing: if the option is unset, airline isn't loaded
-and the status-lane registration is skipped (the turn counter still works, since
-it's a plain tmux option). `AIRLINE_BIN` overrides it for tests or a non-TPM
-layout.
+active." There's no path-guessing, and it's resolved at call time, not load time.
+`AIRLINE_BIN` overrides it for tests or a non-TPM layout.
+
+If the lifecycle or health scripts are *invoked* without airline resolvable
+(misconfigured, or loaded before airline), they print one warning per tmux server
+and then no-op — so a missing dependency is visible without failing the hook on
+every turn or spamming the statusLine. Wire none of the airline-backed signals
+and you'll never see it. (The turn counter needs no airline — it's a plain tmux
+option you render yourself.)
 
 ## Wiring an agent: Claude Code
 
@@ -204,15 +233,15 @@ under one event's `hooks` array:
 - `PostToolUse` → `working` is optional but recommended: it flips a window back
   to `working` when the agent resumes after you grant a permission (the one
   resume that isn't a prompt). It fires per tool call — cheap, idempotent.
-- `SessionStart`/`SessionEnd` → `clear` (resets the `agent` status lane *and* the
-  `ctx` health key) and `reset` (blanks the turn counter), so a session boundary
-  leaves no stale signal anywhere.
+- `SessionStart`/`SessionEnd` → `clear` (resets the `agent` status lane *and*
+  both health keys, `ctx` and `usage`) and `reset` (blanks the turn counter), so
+  a session boundary leaves no stale signal anywhere.
 - Another agent runner wires its own hooks to the same script calls.
 
-For **context pressure**, add `agent-context.sh` as your `statusLine` command. It
-reads the context percentage, reports the severity on airline's health channel,
-and passes the JSON through unchanged — so pipe it into whatever you already use
-for your status line:
+For **health** (context + usage), add `agent-context.sh` as your `statusLine`
+command. It reads the context and rate-limit percentages, reports each severity
+on airline's health channel, and passes the JSON through unchanged — so pipe it
+into whatever you already use for your status line:
 
 ```json
 {

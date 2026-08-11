@@ -17,6 +17,10 @@ setup() {
   cat > "${FAKE_BIN}/tmux" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
+# Emulate `tmux show -gqv @agent-tools-airline-warned` returning the warn flag.
+case "$*" in
+  *@agent-tools-airline-warned*) printf '%s' "${FAKE_WARNED:-}" ;;
+esac
 SH
   cat > "${FAKE_BIN}/airline" <<'SH'
 #!/usr/bin/env bash
@@ -35,20 +39,16 @@ teardown() {
 
 # --- mapping ---
 
-@test "map: needs-input -> alert" {
-  source "$SCRIPT"; run as_map needs-input; [ "$output" = "alert" ]
+@test "map: working -> active" {
+  source "$SCRIPT"; run as_map working; [ "$output" = "active" ]
 }
 
-@test "map: working -> monitor" {
-  source "$SCRIPT"; run as_map working; [ "$output" = "monitor" ]
+@test "map: needs-input -> attention" {
+  source "$SCRIPT"; run as_map needs-input; [ "$output" = "attention" ]
 }
 
-@test "map: done -> ok, transient" {
-  source "$SCRIPT"; run as_map done; [ "$output" = "ok 1" ]
-}
-
-@test "map: error -> stress" {
-  source "$SCRIPT"; run as_map error; [ "$output" = "stress" ]
+@test "map: done -> result, transient" {
+  source "$SCRIPT"; run as_map done; [ "$output" = "result 1" ]
 }
 
 @test "map: idle and clear -> empty" {
@@ -57,31 +57,30 @@ teardown() {
   run as_map clear; [ -z "$output" ]
 }
 
+@test "map: error is no longer a state (status has no critical level)" {
+  source "$SCRIPT"; run as_map error; [ "$status" -ne 0 ]
+}
+
 @test "map: unknown state fails" {
   source "$SCRIPT"; run as_map bogus; [ "$status" -ne 0 ]
 }
 
 # --- applying via the airline CLI ---
 
-@test "apply: needs-input lights the agent lane alert (sticky)" {
+@test "apply: needs-input lights the agent lane attention (sticky)" {
   source "$SCRIPT"; as_apply needs-input
-  grep -q "status set agent alert -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status set agent attention -t %3" "$FAKE_AIRLINE_LOG"
   ! grep -q -- "--transient" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: working lights the agent lane monitor" {
+@test "apply: working lights the agent lane active" {
   source "$SCRIPT"; as_apply working
-  grep -q "status set agent monitor -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status set agent active -t %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: done lights the agent lane ok and marks it transient" {
+@test "apply: done lights the agent lane result and marks it transient" {
   source "$SCRIPT"; as_apply done
-  grep -q "status set agent ok --transient -t %3" "$FAKE_AIRLINE_LOG"
-}
-
-@test "apply: error lights the agent lane stress" {
-  source "$SCRIPT"; as_apply error
-  grep -q "status set agent stress -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status set agent result --transient -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: clear clears the agent lane" {
@@ -89,14 +88,15 @@ teardown() {
   grep -q "status clear agent -t %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: clear also clears the context health key" {
+@test "apply: clear also clears both health keys (context + usage)" {
   source "$SCRIPT"; as_apply clear
-  grep -q "health clear ctx -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health clear ctx -t %3"   "$FAKE_AIRLINE_LOG"
+  grep -q "health clear usage -t %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: refreshes the client" {
+@test "apply: does not refresh the client itself (airline owns the redraw)" {
   source "$SCRIPT"; as_apply needs-input
-  grep -q "refresh-client -S" "$FAKE_TMUX_LOG"
+  ! grep -q "refresh-client" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: no-op outside tmux" {
@@ -107,12 +107,22 @@ teardown() {
   [ ! -s "$FAKE_TMUX_LOG" ]
 }
 
-@test "apply: errors when airline cannot be found" {
+@test "apply: missing airline warns and no-ops (does not fail the hook)" {
   source "$SCRIPT"
   rm -f "${FAKE_BIN}/airline"; unset AIRLINE_BIN   # no airline anywhere
   run as_apply working
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]                              # warn, not die
+  [[ "$output" == *"airline CLI not found"* ]]
   [ ! -s "$FAKE_AIRLINE_LOG" ]
+}
+
+@test "apply: missing-airline warning is suppressed once already warned" {
+  source "$SCRIPT"
+  rm -f "${FAKE_BIN}/airline"; unset AIRLINE_BIN
+  export FAKE_WARNED=1                             # flag already set this server
+  run as_apply working
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]                                 # silent the second time
 }
 
 # --- entry point ---
