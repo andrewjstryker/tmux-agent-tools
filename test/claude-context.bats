@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for scripts/agent-context.sh.
+# Tests for integrations/claude-context.sh.
 #
 # ac_tier, ac_extract_pct and ac_extract_usage are pure. ac_apply drives the
 # airline CLI; its calls are checked against a fake `airline` on PATH (pointed at
@@ -8,7 +8,7 @@
 # ac_apply proceeds (unset in the no-op test).
 
 setup() {
-  SCRIPT="${BATS_TEST_DIRNAME}/../scripts/agent-context.sh"
+  SCRIPT="${BATS_TEST_DIRNAME}/../integrations/claude-context.sh"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/agctx.XXXXXX")"
   FAKE_BIN="${TESTDIR}/bin"
   mkdir -p "$FAKE_BIN"
@@ -21,10 +21,10 @@ setup() {
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
 case "$*" in
-  *@agent-context-alert*)  printf '%s' "${FAKE_ALERT}" ;;
-  *@agent-context-stress*) printf '%s' "${FAKE_STRESS}" ;;
-  *@agent-usage-alert*)    printf '%s' "${FAKE_USAGE_ALERT}" ;;
-  *@agent-usage-stress*)   printf '%s' "${FAKE_USAGE_STRESS}" ;;
+  *@agent-tools-context-alert*)  printf '%s' "${FAKE_ALERT}" ;;
+  *@agent-tools-context-stress*) printf '%s' "${FAKE_STRESS}" ;;
+  *@agent-tools-usage-alert*)    printf '%s' "${FAKE_USAGE_ALERT}" ;;
+  *@agent-tools-usage-stress*)   printf '%s' "${FAKE_USAGE_STRESS}" ;;
   *@agent-tools-airline-warned*) printf '%s' "${FAKE_WARNED:-}" ;;
 esac
 SH
@@ -116,52 +116,77 @@ teardown() {
 @test "apply: high usage reports stress health" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":95}}' | ac_apply >/dev/null
-  grep -q "health set ctx stress -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set ctx-3 stress -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: mid usage reports alert health" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":83}}' | ac_apply >/dev/null
-  grep -q "health set ctx alert -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set ctx-3 alert -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: low usage clears the health key" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":40}}' | ac_apply >/dev/null
-  grep -q "health clear ctx -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: thresholds are overridable via tmux options" {
   source "$SCRIPT"
   FAKE_ALERT=50 FAKE_STRESS=70
   echo '{"context_window":{"used_percentage":55}}' | ac_apply >/dev/null
-  grep -q "health set ctx alert -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set ctx-3 alert -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: high rate-limit reports stress on the usage key" {
   source "$SCRIPT"
   echo '{"rate_limits":{"seven_day":{"used_percentage":95}}}' | ac_apply >/dev/null
-  grep -q "health set usage stress -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set usage-3 stress -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: mid rate-limit reports alert on the usage key" {
   source "$SCRIPT"
   echo '{"rate_limits":{"five_hour":{"used_percentage":83}}}' | ac_apply >/dev/null
-  grep -q "health set usage alert -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set usage-3 alert -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: no rate_limits clears the usage key" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":40}}' | ac_apply >/dev/null
-  grep -q "health clear usage -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: usage thresholds are independently overridable" {
   source "$SCRIPT"
   FAKE_USAGE_ALERT=50 FAKE_USAGE_STRESS=70   # context stays 80/90
   echo '{"context_window":{"used_percentage":55},"rate_limits":{"five_hour":{"used_percentage":55}}}' | ac_apply >/dev/null
-  grep -q "health set usage alert -t %3" "$FAKE_AIRLINE_LOG"   # 55 >= usage alert 50
-  grep -q "health clear ctx -t %3"       "$FAKE_AIRLINE_LOG"   # 55 <  context alert 80
+  grep -q "health set usage-3 alert -t %3" "$FAKE_AIRLINE_LOG" # 55 >= usage alert 50
+  grep -q "health clear ctx-3 -t %3"       "$FAKE_AIRLINE_LOG" # 55 < context alert 80
+}
+
+@test "keys: health contributors are qualified by the calling pane" {
+  source "$SCRIPT"
+  TMUX_PANE=%9
+  [ "$(ac_key "$AC_KEY_PREFIX")" = "ctx-9" ]
+  [ "$(ac_key "$AC_USAGE_KEY_PREFIX")" = "usage-9" ]
+}
+
+@test "clear: removes only the calling pane's Claude health contributors" {
+  source "$SCRIPT"
+  ac_clear
+  grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
+}
+
+@test "main: clear emits no statusLine output" {
+  run bash "$SCRIPT" clear
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "main: rejects an unknown command" {
+  run bash "$SCRIPT" bogus
+  [ "$status" -ne 0 ]
 }
 
 @test "apply: passes the JSON through unchanged on stdout" {

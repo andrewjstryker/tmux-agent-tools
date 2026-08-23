@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# agent-context.sh — reflect an agent's resource pressure in the tmux window
-# list, using tmux-airline's health channel (the `airline health` CLI).
+# claude-context.sh — adapt Claude Code statusLine resource data to
+# tmux-airline's health channel (the `airline health` CLI).
 #
 # Two meters, both exposed only to a Claude Code *statusLine* command (hooks
 # don't get them), so this is wired as one. It reads the statusLine JSON on
@@ -9,7 +9,7 @@
 # status line. JSON in, JSON out — so jq is required (see ac_have_jq):
 #
 #   "statusLine": { "type": "command",
-#     "command": "$(tmux show -gqv @agent-context-bin) | your-status-line" }
+#     "command": "$(tmux show -gqv @agent-tools-claude-context-bin) | your-status-line" }
 #
 # The two meters:
 #   * context-window fill — context_window.used_percentage, under the 'ctx' key.
@@ -17,27 +17,28 @@
 #                           .used_percentage (Claude.ai Pro/Max only; each window
 #                           may be absent), under the 'usage' key.
 #
-# Both are *meters* (sustained conditions), so they use the health gutter —
+# Both are *meters* (sustained conditions), so they use the right health gutter —
 # distinct from the lifecycle *status lane* (badge) that agent-state.sh drives.
 # All three coexist on a window. airline reduces all health contributors to the
 # worst severity, so a busy window shows one gutter glyph at the max. Thresholds
 # are percent and overridable via tmux options (each meter has its own pair):
-#   @agent-context-alert  (default 80) -> alert  (amber gutter glyph)
-#   @agent-context-stress (default 90) -> stress (red gutter glyph)
-#   @agent-usage-alert    (default 80) -> alert
-#   @agent-usage-stress   (default 90) -> stress
+#   @agent-tools-context-alert  (default 80) -> alert  (amber gutter glyph)
+#   @agent-tools-context-stress (default 90) -> stress (red gutter glyph)
+#   @agent-tools-usage-alert    (default 80) -> alert
+#   @agent-tools-usage-stress   (default 90) -> stress
 # Below the alert threshold the contribution is cleared.
 #
 # Layered like agent-state.sh: the pure mapping (ac_tier) is split from the CLI
 # writes (ac_apply) so the bats suite can drive it without a tmux server.
 
-# The health keys this plugin contributes under (agent-state.sh clears the same
-# keys on a session reset). Kept in sync with agent-state.sh's AS_CTX_KEY /
-# AS_USAGE_KEY.
-AC_KEY="ctx"
-AC_USAGE_KEY="usage"
+# Health contributors are pane-qualified so separate Claude sessions in panes of
+# the same window reduce independently through airline's health collection.
+AC_KEY_PREFIX="ctx"
+AC_USAGE_KEY_PREFIX="usage"
 
-ac_die() { printf 'agent-context: %s\n' "$*" >&2; return 1; }
+ac_key() { printf '%s-%s' "$1" "${TMUX_PANE#%}"; }
+
+ac_die() { printf 'claude-context: %s\n' "$*" >&2; return 1; }
 
 # Resolve the airline CLI (the supported API) via @airline-cli — the absolute
 # path airline publishes at load. That option is the contract for "airline is
@@ -60,11 +61,11 @@ ac_warn_once() {   # <name> <message>
   local flag="@agent-tools-$1-warned"
   [ "$(tmux show -gqv "$flag" 2>/dev/null)" = 1 ] && return 0
   tmux set -g "$flag" 1 2>/dev/null
-  printf 'agent-context: %s\n' "$2" >&2
+  printf 'claude-context: %s\n' "$2" >&2
 }
 
-# jq is a hard dependency: an agent speaks JSON, and jq is the tool for JSON — no
-# brittle hand-rolled parse. A seam (overridable in tests) for the one presence
+# jq is a hard dependency for this adapter: Claude speaks JSON and jq is the tool
+# for JSON — no brittle hand-rolled parse. A seam for the one presence
 # check. The statusLine JSON now carries sibling used_percentage keys (rate_limits),
 # so a precise jq path is the only correct reader, not a first-match grep.
 ac_have_jq() { command -v jq >/dev/null 2>&1; }
@@ -119,8 +120,21 @@ ac_report() {   # <airline> <key> <token>
   fi
 }
 
+# Clear only this pane's Claude health contributors. Lifecycle hooks use this at
+# session boundaries; unlike the statusLine mode it intentionally emits nothing.
+ac_clear() {
+  local airline
+  [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
+  airline=$(ac_airline); [ -n "$airline" ] || {
+    ac_warn_once airline "airline CLI not found — set @airline-cli (load tmux-airline first) or the AIRLINE_BIN env var; status/health signals disabled"
+    return 0
+  }
+  ac_report "$airline" "$(ac_key "$AC_KEY_PREFIX")" ""
+  ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" ""
+}
+
 # Read an alert/stress threshold pair from tmux options with defaults. Prints
-# "<alert> <stress>". <prefix> is the option base, e.g. @agent-context.
+# "<alert> <stress>". <prefix> is the option base, e.g. @agent-tools-context.
 ac_thresholds() {   # <prefix> <default-alert> <default-stress>
   local alert stress
   alert=$(tmux show -gqv "$1-alert");   [ -n "$alert" ]  || alert=$2
@@ -144,18 +158,26 @@ ac_apply() {
   }
 
   # Context-window fill -> 'ctx' key.
-  read -r alert stress <<<"$(ac_thresholds @agent-context 80 90)"
-  ac_report "$airline" "$AC_KEY" "$(ac_tier "$(ac_extract_pct "$json")" "$alert" "$stress")"
+  read -r alert stress <<<"$(ac_thresholds @agent-tools-context 80 90)"
+  ac_report "$airline" "$(ac_key "$AC_KEY_PREFIX")" "$(ac_tier "$(ac_extract_pct "$json")" "$alert" "$stress")"
 
   # Usage limit (worse of the two rate-limit windows) -> 'usage' key.
-  read -r alert stress <<<"$(ac_thresholds @agent-usage 80 90)"
-  ac_report "$airline" "$AC_USAGE_KEY" "$(ac_tier "$(ac_extract_usage "$json")" "$alert" "$stress")"
+  read -r alert stress <<<"$(ac_thresholds @agent-tools-usage 80 90)"
+  ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" "$(ac_tier "$(ac_extract_usage "$json")" "$alert" "$stress")"
   # No refresh here: airline redraws only when the reduced severity changed, so a
   # statusLine that fires several times a second at a steady level costs one write
   # per key and zero redraws. Our own refresh would undo that gating.
 }
 
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+ac_main() {
   set -euo pipefail
-  ac_apply
+  case "${1:-update}" in
+    update) [ $# -le 1 ] || ac_die "usage: claude-context.sh [update|clear]"; ac_apply ;;
+    clear)  [ $# -eq 1 ] || ac_die "usage: claude-context.sh [update|clear]"; ac_clear ;;
+    *)      ac_die "usage: claude-context.sh [update|clear]" ;;
+  esac
+}
+
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  ac_main "$@"
 fi

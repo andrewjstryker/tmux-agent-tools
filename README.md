@@ -2,22 +2,22 @@
 
 Surface an agent's signal in [tmux-airline](https://github.com/andrewjstryker/tmux-airline)
 — at a glance, even while you're focused elsewhere. Built for a terminal-centric
-agent workflow (several agents across windows), but it knows nothing about any
-specific agent: it's a set of thin **setters** that map *agent vocabulary →
-airline CLI calls* (its supported API) or a plain tmux option. airline does the
-rendering and clearing.
+agent workflow (several agents across windows). Its core is a set of thin,
+provider-neutral **setters** that map *agent vocabulary → airline CLI calls*
+(its supported API) or a plain tmux option. Provider integrations translate
+their own payloads into that core; airline does the rendering and clearing.
 
 Three independent signals, each matched to the airline channel that fits it:
 
-- **Lifecycle → status badge.** A small glyph after the window name shows which
+- **Lifecycle → status badge.** A small glyph before the window name shows which
   window is **working** (`○`), **wants your input** (`◆`), or is **done** (`●`).
-  Lifecycle is an *event* signal, so airline's status lane (its right-of-name
+  Lifecycle is an *event* signal, so airline's status lane (its left-of-name
   badge stack) is the right treatment.
-- **Resource pressure → health gutter.** As an agent's **context window** fills —
-  or its **usage limit** approaches — a severity glyph appears in the window's
-  **left gutter**, **amber then red**. Both are *meters* (sustained resource
-  conditions), so airline's health channel fits — and unlike Claude's own in-pane
-  displays, they're visible across windows when you're *not* focused there.
+- **Resource pressure → health gutter.** When a provider exposes context or
+  usage pressure, a severity glyph appears in the window's
+  **right gutter**, **amber then red**. Both are *meters* (sustained resource
+  conditions), so airline's health channel fits. The included Claude Code
+  integration reports context-window and usage-limit pressure.
 - **Turn counter → a widget you place.** A per-pane count of conversation turns,
   rendered as `<n>⟳` wherever your status line evaluates formats.
 
@@ -26,9 +26,10 @@ context limit (red gutter glyph) and show a turn count.
 
 ## Lifecycle → status badge
 
-`scripts/agent-state.sh` lights the `agent` status key via `airline status set
-agent <level>`. airline's status channel has three fixed levels, each with its
-own glyph and color — the plugin picks the *level*, airline owns the glyph:
+`scripts/agent-state.sh` lights a pane-qualified status contributor via
+`airline status set agent-<pane> <level>`. Pane qualification lets multiple
+agents share a window without overwriting each other. airline's status channel
+has three fixed levels; the plugin picks the *level* and airline owns the glyph:
 
 | State | airline level | Badge | In the window list |
 | ----- | ------------- | ----- | ------------------ |
@@ -46,14 +47,15 @@ the window and moved on — the one transition this plugin can't observe.
 > (`result` outranks `active`; there's nothing above `attention`). A run that
 > ends badly is still "the agent wants you" — wire it to `needs-input`.
 
-`clear`/`idle` also clear **both** health keys this plugin drives (`ctx` and
-`usage`), so a session reset wipes every channel at once.
+`clear`/`idle` clear only the calling pane's lifecycle contributor. Provider
+health is independent and is cleared by that provider's integration.
 
-## Resource pressure → health
+## Claude Code resource pressure → health
 
-`scripts/agent-context.sh` reports two meters on airline's **health channel**,
-each under its own key (`airline health set <key> <severity>`); airline reduces
-all health contributors to the worst severity and shows one gutter glyph:
+`integrations/claude-context.sh` adapts Claude Code's `statusLine` JSON into two
+meters on airline's **health channel**. Each pane contributes its own `ctx-<pane>`
+and `usage-<pane>` keys; airline reduces all health contributors to the worst
+severity and shows one gutter glyph:
 
 **Context window** (`ctx` key) — how full the context is:
 
@@ -75,10 +77,10 @@ windows (Claude.ai Pro/Max only; absent otherwise, which reads as cleared):
 Each meter has its own **overridable** thresholds:
 
 ```tmux
-set -g @agent-context-alert  75    # default 80
-set -g @agent-context-stress 92    # default 90
-set -g @agent-usage-alert    70    # default 80
-set -g @agent-usage-stress   85    # default 90
+set -g @agent-tools-context-alert  75    # default 80
+set -g @agent-tools-context-stress 92    # default 90
+set -g @agent-tools-usage-alert    70    # default 80
+set -g @agent-tools-usage-stress   85    # default 90
 ```
 
 Why a meter and not a meter *widget*: Claude already shows context and usage in
@@ -87,21 +89,21 @@ need tmux to tell you. The one moment they matter across windows is when a windo
 is *nearing a ceiling*, and that's an attention signal — `alert`/`stress`,
 airline's existing resource-pressure vocab (the same it uses for battery and CPU).
 
-Both are exposed only to a Claude Code **statusLine** command, so
-`agent-context.sh` is wired there (see below), not as a hook.
+Both are exposed through Claude Code's **statusLine** command, so the integration
+is wired there rather than pretending its payload is a provider-neutral format.
 
 ## Turn counter → a widget you place
 
 There's a clean split:
 
 - **This plugin owns the value.** A per-turn hook calls `scripts/agent-turns.sh`,
-  which keeps a count in the **pane-scoped** option `@agent-turns`.
+  which keeps a count in the **pane-scoped** option `@agent-tools-turns`.
 - **You own the rendering.** The counter is a plain tmux format that references
-  `@agent-turns` — a *regular widget you place yourself*. There's no special
+  `@agent-tools-turns` — a *regular widget you place yourself*. There's no special
   API: it works as an airline segment, with vanilla `status-right`, or anywhere
   a tmux format is evaluated.
 
-Because `@agent-turns` is pane-scoped, tmux resolves it against the **active
+Because `@agent-tools-turns` is pane-scoped, tmux resolves it against the **active
 pane**, so the widget shows the turn count of the pane you're looking at and is
 blank when that pane isn't running an agent.
 
@@ -117,7 +119,7 @@ maintains its own — no transcript parsing.
 
 ### Placing the widget
 
-Render `@agent-turns` wherever your status line evaluates formats.
+Render `@agent-tools-turns` wherever your status line evaluates formats.
 
 **With tmux-airline** — a segment is just a public `@airline-segment-<slot>`
 option you set with `set -g`; airline owns the chevrons and the tier background,
@@ -126,14 +128,14 @@ you own the slot and the format. There are six slots (`left-out`/`mid`/`in`,
 
 ```sh
 # right-side inner slot showing "<n>⟳", blank when there's no counter
-set -g @airline-segment-right-in '#{?@agent-turns, #{@agent-turns}⟳,}'
+set -g @airline-segment-right-in '#{?@agent-tools-turns, #{@agent-tools-turns}⟳,}'
 ```
 
-The value is a normal tmux format, so the dynamic `#{@agent-turns}` stays live,
+The value is a normal tmux format, so the dynamic `#{@agent-tools-turns}` stays live,
 and you can style it with airline's theme color options:
 
 ```sh
-set -g @airline-segment-right-in '#{?@agent-turns,#[fg=#{@airline-emphasized}] #{@agent-turns}⟳,}'
+set -g @airline-segment-right-in '#{?@agent-tools-turns,#[fg=#{@airline-emphasized}] #{@agent-tools-turns}⟳,}'
 ```
 
 Edit the option to change it, `set -gu @airline-segment-right-in` to drop it, or
@@ -143,7 +145,7 @@ the whole arrangement; a bare `set -g` is fine for one slot.)
 **Without tmux-airline** — append the same format to `status-right` directly:
 
 ```sh
-set -ga status-right '#{?@agent-turns, #{@agent-turns}⟳,}'
+set -ga status-right '#{?@agent-tools-turns, #{@agent-tools-turns}⟳,}'
 ```
 
 The `⟳` is just text in your format — swap it for any glyph you prefer.
@@ -159,12 +161,10 @@ The `⟳` is just text in your format — swap it for any glyph you prefer.
 - `tmux` 3.0+. The `done` badge is `--transient`; airline enables `focus-events`
   itself the first time a transient signal is set, so its unfocus-clear works
   with no extra setup here.
-- [`jq`](https://jqlang.github.io/jq/) — **only** for the health feature
-  (`agent-context.sh`), which reads the statusLine JSON for context and usage. An
-  agent speaks JSON and jq is the tool for JSON, so it's a hard dependency there
-  rather than a hand-rolled parser; without it the script passes the JSON through
-  untouched, warns once, and skips the health update. The lifecycle badge and
-  turn counter use no JSON and need no jq.
+- [`jq`](https://jqlang.github.io/jq/) — **only** for the Claude Code health
+  integration, which reads Claude's statusLine JSON. Without it the integration
+  passes the JSON through unchanged, warns once, and skips the health update.
+  The provider-neutral lifecycle and turn setters need no JSON and no jq.
 
 ## Install (TPM)
 
@@ -181,10 +181,14 @@ statusLine) need not hardcode any install dir — there's no registration step
 (airline creates status keys on first `set` and its glyphs are fixed per level):
 
 ```sh
-"$(tmux show -gqv @agent-state-bin)"   needs-input   # lifecycle (status lane)
-"$(tmux show -gqv @agent-context-bin)"               # context + usage (health gutter, statusLine)
-"$(tmux show -gqv @agent-turns-bin)"   bump          # turn counter (a format you place)
+"$(tmux show -gqv @agent-tools-state-bin)"          needs-input
+"$(tmux show -gqv @agent-tools-turns-bin)"          bump
+"$(tmux show -gqv @agent-tools-claude-context-bin)" # Claude statusLine adapter
 ```
+
+Every plugin-owned tmux option uses the project namespace `@agent-tools-*`.
+The former `@agent-state-*`, `@agent-context-*`, `@agent-usage-*`, and
+`@agent-turns` names are intentionally not read as compatibility aliases.
 
 The setters reach the `airline` CLI through **`@airline-cli`** — the absolute
 path airline publishes at load, which doubles as the contract for "airline is
@@ -198,30 +202,31 @@ every turn or spamming the statusLine. Wire none of the airline-backed signals
 and you'll never see it. (The turn counter needs no airline — it's a plain tmux
 option you render yourself.)
 
-## Wiring an agent: Claude Code
+## Wiring Claude Code
 
-`tmux-agent-tools` is agent-agnostic; Claude Code is one consumer. Add hooks to
-`~/.claude/settings.json` that call the setters on lifecycle events. All three
-signals share the same `SessionStart`/`SessionEnd` events — list their commands
-under one event's `hooks` array:
+Add hooks to `~/.claude/settings.json` that translate Claude lifecycle events
+into the neutral setters. Commands resolve the published paths at runtime, so
+the configuration does not assume a TPM installation directory:
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [
-      { "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-state.sh working" },
-      { "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-turns.sh bump" }
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" working; fi" },
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-turns-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" bump; fi" }
     ] }],
-    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-state.sh working" }] }],
-    "Notification":     [{ "hooks": [{ "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-state.sh needs-input" }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-state.sh done" }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" working; fi" }] }],
+    "Notification":     [{ "hooks": [{ "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" needs-input; fi" }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" done; fi" }] }],
     "SessionStart":     [{ "hooks": [
-      { "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-state.sh clear" },
-      { "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-turns.sh reset" }
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" clear; fi" },
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-turns-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" reset; fi" },
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-context-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" clear; fi" }
     ] }],
     "SessionEnd":       [{ "hooks": [
-      { "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-state.sh clear" },
-      { "type": "command", "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-turns.sh reset" }
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" clear; fi" },
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-turns-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" reset; fi" },
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-context-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" clear; fi" }
     ] }]
   }
 }
@@ -233,21 +238,18 @@ under one event's `hooks` array:
 - `PostToolUse` → `working` is optional but recommended: it flips a window back
   to `working` when the agent resumes after you grant a permission (the one
   resume that isn't a prompt). It fires per tool call — cheap, idempotent.
-- `SessionStart`/`SessionEnd` → `clear` (resets the `agent` status lane *and*
-  both health keys, `ctx` and `usage`) and `reset` (blanks the turn counter), so
-  a session boundary leaves no stale signal anywhere.
-- Another agent runner wires its own hooks to the same script calls.
+- `SessionStart`/`SessionEnd` explicitly clear each independent signal owned by
+  the session, so one setter never has to know about another.
 
-For **health** (context + usage), add `agent-context.sh` as your `statusLine`
-command. It reads the context and rate-limit percentages, reports each severity
-on airline's health channel, and passes the JSON through unchanged — so pipe it
-into whatever you already use for your status line:
+For **health** (context + usage), add the Claude adapter as your `statusLine`
+command. It reports each severity on airline's health channel and passes the
+JSON through unchanged, so it can precede your existing formatter:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "~/.tmux/plugins/tmux-agent-tools/scripts/agent-context.sh | your-status-line-command"
+    "command": "bin=\"$(tmux show -gqv @agent-tools-claude-context-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\"; else cat; fi | your-status-line-command"
   }
 }
 ```
@@ -257,8 +259,52 @@ append a formatter of your choice). statusLine is singular in Claude Code, so
 this *augments* rather than replaces — the passthrough is what lets it coexist
 with your existing one.
 
-Outside tmux, all three scripts are silent no-ops (`agent-context.sh` still
-passes the JSON through), so the wiring is safe in any context.
+Outside tmux, all commands are silent no-ops (the statusLine mode still passes
+its JSON through), so the wiring is safe in any context.
+
+## Wiring Codex
+
+Codex exposes the lifecycle events needed for the neutral lifecycle and turn
+signals. Add the following to `~/.codex/hooks.json`:
+
+```json
+{
+  "description": "Surface Codex lifecycle state in tmux-airline.",
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "startup|clear",
+      "hooks": [
+        { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" clear; fi" },
+        { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-turns-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" reset; fi" }
+      ]
+    }],
+    "UserPromptSubmit": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" working; fi" },
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-turns-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" bump; fi" }
+    ] }],
+    "PermissionRequest": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" needs-input; fi" }
+    ] }],
+    "PostToolUse": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" working; fi" }
+    ] }],
+    "Stop": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" done; fi" }
+    ] }],
+    "SessionEnd": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-state-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" clear; fi" },
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-turns-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" reset; fi" }
+    ] }]
+  }
+}
+```
+
+Codex sends JSON on stdin; these setters deliberately ignore it and emit no
+stdout. Use `/hooks` in Codex to review and trust the command hooks; see the
+[official Codex hooks documentation](https://learn.chatgpt.com/docs/hooks).
+Codex's hook payload does not currently expose stable context-window or
+usage-limit percentages, so this integration supports lifecycle and turns but
+not health.
 
 ## Tests
 

@@ -18,7 +18,7 @@ setup() {
   cat > "${FAKE_BIN}/tmux" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
-# Emulate `tmux show -pqv ... @agent-turns` returning the current value.
+# Emulate `tmux show -pqv ... @agent-tools-turns` returning the current value.
 case "$*" in
   show*) cat "$FAKE_TMUX_SHOW" ;;
 esac
@@ -53,30 +53,30 @@ teardown() {
   source "$SCRIPT"
   printf '' > "$FAKE_TMUX_SHOW"        # no existing counter
   at_apply bump
-  grep -q "set -p -t %3 @agent-turns 1" "$FAKE_TMUX_LOG"
+  grep -q "set -p -t %3 @agent-tools-turns 1" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: bump increments an existing counter" {
   source "$SCRIPT"
   printf '4\n' > "$FAKE_TMUX_SHOW"     # current counter is 4
   at_apply bump
-  grep -q "set -p -t %3 @agent-turns 5" "$FAKE_TMUX_LOG"
+  grep -q "set -p -t %3 @agent-tools-turns 5" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: bump reads the counter as a pane option" {
   source "$SCRIPT"
   at_apply bump
-  grep -q "show -pqv -t %3 @agent-turns" "$FAKE_TMUX_LOG"
+  grep -q "show -pqv -t %3 @agent-tools-turns" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: reset unsets the pane counter" {
   source "$SCRIPT"; at_apply reset
-  grep -qE "set -pu -t %3 @agent-turns$" "$FAKE_TMUX_LOG"
+  grep -qE "set -pu -t %3 @agent-tools-turns$" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: clear is an alias for reset" {
   source "$SCRIPT"; at_apply clear
-  grep -qE "set -pu -t %3 @agent-turns$" "$FAKE_TMUX_LOG"
+  grep -qE "set -pu -t %3 @agent-tools-turns$" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: bump refreshes the client" {

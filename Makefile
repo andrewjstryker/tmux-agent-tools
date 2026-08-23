@@ -6,6 +6,8 @@ test:
 	bats test
 
 lint:
-	@command -v shellcheck >/dev/null \
-	  && shellcheck scripts/*.sh agent-tools.tmux \
-	  || echo "shellcheck not installed; skipping"
+	@if command -v shellcheck >/dev/null; then \
+	  shellcheck scripts/*.sh integrations/*.sh agent-tools.tmux; \
+	else \
+	  echo "shellcheck not installed; skipping"; \
+	fi

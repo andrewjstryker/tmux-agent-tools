@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # agent-state.sh — reflect an agent's lifecycle state in the tmux window list,
-# using tmux-airline's status-lane channel (the `airline status` CLI).
+# using tmux-airline's left status-lane channel (the `airline status` CLI).
 #
 # Lifecycle is an *event* signal (a discrete state worth a glance), so it uses a
-# status lane — airline's right-of-name badge stack — distinct from the health
-# gutter, which agent-context.sh drives with a meter-style signal (context-window
-# pressure). The two channels coexist on a window.
+# status lane — airline's left-of-name badge stack — distinct from the health
+# gutter, which provider integrations may drive with meter-style signals. The
+# two channels coexist on a window.
 #
 # Translates an agent state into one of airline's status *levels* and lights the
-# 'agent' status lane on the window of the calling pane ($TMUX_PANE), so the
-# window list shows a small badge (a glyph after the name) marking which agent is
+# calling pane's status contributor on its window ($TMUX_PANE), so the
+# window list shows a small badge (a glyph before the name) marking which agent is
 # working / waiting / finished. The agent speaks its own vocabulary; this script
 # owns the state -> level mapping. It is agent-agnostic — any agent's hooks can
 # call it; Claude Code is the worked example in the README.
@@ -29,12 +29,12 @@
 # Layer 1: standalone. The pure mapping (as_map) is split from the CLI writes
 # (as_apply) so the bats suite can drive it without a tmux server.
 
-# The status key this plugin lights (created implicitly on first `status set`;
-# airline no longer registers keys) and the health keys agent-context.sh drives
-# — cleared here too, so a session reset wipes both channels at once.
-AS_LANE="agent"
-AS_CTX_KEY="ctx"
-AS_USAGE_KEY="usage"
+# Prefix for the status contributor this plugin lights. The pane id is appended
+# at runtime so two agents in different panes of one window cannot overwrite or
+# clear each other's lifecycle state.
+AS_KEY_PREFIX="agent"
+
+as_key() { printf '%s-%s' "$AS_KEY_PREFIX" "${TMUX_PANE#%}"; }
 
 as_die() { printf 'agent-state: %s\n' "$*" >&2; return 1; }
 
@@ -78,28 +78,25 @@ as_map() {
 # Apply a state to the calling pane's window via the airline CLI. No-op outside
 # tmux so hooks never fail when run in a non-tmux context.
 as_apply() {
-  local state="$1" mapped level transient airline
+  local state="$1" mapped level transient airline key
   mapped=$(as_map "$state") || { as_die "unknown state: $state"; return 1; }
   read -r level transient <<<"$mapped"
 
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
   airline=$(as_airline); [ -n "$airline" ] || { as_warn_no_airline; return 0; }
+  key=$(as_key)
 
   if [ -n "$level" ]; then
     # airline drops any stale --transient flag itself when set without it, so a
     # previous 'done' never lingers as transient under a later sticky state.
     if [ -n "$transient" ]; then
-      "$airline" status set "$AS_LANE" "$level" --transient -t "$TMUX_PANE"
+      "$airline" status set "$key" "$level" --transient -t "$TMUX_PANE"
     else
-      "$airline" status set "$AS_LANE" "$level" -t "$TMUX_PANE"
+      "$airline" status set "$key" "$level" -t "$TMUX_PANE"
     fi
   else
-    # clear/idle resets the window: clear the lifecycle lane AND every health key
-    # agent-context.sh drives (context + usage), so a SessionStart/SessionEnd
-    # wipe leaves no stale signal in either channel.
-    "$airline" status clear "$AS_LANE"      -t "$TMUX_PANE"
-    "$airline" health clear "$AS_CTX_KEY"   -t "$TMUX_PANE"
-    "$airline" health clear "$AS_USAGE_KEY" -t "$TMUX_PANE"
+    # Lifecycle is independent from provider-specific health integrations.
+    "$airline" status clear "$key" -t "$TMUX_PANE"
   fi
   # No refresh here: airline owns the redraw and issues it only when the badge or
   # health value actually changed, so re-setting 'working' on every tool call is

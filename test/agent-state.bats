@@ -69,29 +69,34 @@ teardown() {
 
 @test "apply: needs-input lights the agent lane attention (sticky)" {
   source "$SCRIPT"; as_apply needs-input
-  grep -q "status set agent attention -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status set agent-3 attention -t %3" "$FAKE_AIRLINE_LOG"
   ! grep -q -- "--transient" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: working lights the agent lane active" {
   source "$SCRIPT"; as_apply working
-  grep -q "status set agent active -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status set agent-3 active -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: done lights the agent lane result and marks it transient" {
   source "$SCRIPT"; as_apply done
-  grep -q "status set agent result --transient -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status set agent-3 result --transient -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: clear clears the agent lane" {
   source "$SCRIPT"; as_apply clear
-  grep -q "status clear agent -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status clear agent-3 -t %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: clear also clears both health keys (context + usage)" {
+@test "apply: clear does not clear independent provider health" {
   source "$SCRIPT"; as_apply clear
-  grep -q "health clear ctx -t %3"   "$FAKE_AIRLINE_LOG"
-  grep -q "health clear usage -t %3" "$FAKE_AIRLINE_LOG"
+  ! grep -q "health clear" "$FAKE_AIRLINE_LOG"
+}
+
+@test "key: contributor is qualified by the calling pane" {
+  source "$SCRIPT"
+  TMUX_PANE=%9
+  [ "$(as_key)" = "agent-9" ]
 }
 
 @test "apply: does not refresh the client itself (airline owns the redraw)" {
