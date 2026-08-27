@@ -5,7 +5,10 @@ set -euo pipefail
 
 ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 violations=0
-tmux_invocation='(^|[^[:alnum:]_])tmux([[:space:]]|$)'
+# Match tmux in shell command position, not the product name inside a quoted
+# help string. This covers a simple command, command substitution, a pipeline,
+# and the usual shell control-keyword positions.
+tmux_invocation='(^[[:space:]]*|[$][(][[:space:]]*|[;&|][[:space:]]*|(^|[[:space:]])(command|env|if|then|while|until|!)[[:space:]]+)tmux[[:space:]]'
 airline_invocation='"\$[^"[:space:]]+"[[:space:]]+(status|health|problem)([[:space:]]|$)'
 
 while IFS= read -r file; do

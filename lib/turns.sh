@@ -22,7 +22,12 @@
 # Usage: turns.sh <bump|reset|clear>
 #
 # The pure logic (at_next) is split from the tmux writes (at_apply) so the bats
-# suite can drive it without a tmux server.
+# suite can drive it without a tmux server. This file is private implementation;
+# agent.sh is the public command boundary.
+
+AGENT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/tmux.sh
+source "$AGENT_ROOT/lib/tmux.sh"
 
 AT_OPT="@agent-tools-turns"
 
@@ -47,18 +52,18 @@ at_apply() {
 
   case "$cmd" in
     bump)
-      current=$(tmux show -pqv -t "$TMUX_PANE" "$AT_OPT")
+      current=$(agent_tmux_pane_get "$TMUX_PANE" "$AT_OPT")
       next=$(at_next "$current")
-      tmux set -p -t "$TMUX_PANE" "$AT_OPT" "$next"
+      agent_tmux_pane_set "$TMUX_PANE" "$AT_OPT" "$next"
       ;;
     reset|clear)
-      tmux set -pu -t "$TMUX_PANE" "$AT_OPT"
+      agent_tmux_pane_unset "$TMUX_PANE" "$AT_OPT"
       ;;
     *)
       at_die "unknown command: $cmd"; return 1
       ;;
   esac
-  tmux refresh-client -S 2>/dev/null || true
+  agent_tmux_refresh_status 2>/dev/null || true
 }
 
 at_main() {

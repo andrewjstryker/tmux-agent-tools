@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for operations/lifecycle.sh.
+# Tests for lib/lifecycle.sh.
 #
 # The mapping (as_map) is pure. as_apply drives the airline CLI; its calls are
 # checked against a fake `airline` on PATH (pointed at via $AIRLINE_BIN) that
@@ -7,7 +7,7 @@
 # $TMUX_PANE are set so as_apply proceeds (and unset in the no-op test).
 
 setup() {
-  SCRIPT="${BATS_TEST_DIRNAME}/../operations/lifecycle.sh"
+  SCRIPT="${BATS_TEST_DIRNAME}/../lib/lifecycle.sh"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/agst.XXXXXX")"
   FAKE_BIN="${TESTDIR}/bin"
   mkdir -p "$FAKE_BIN"

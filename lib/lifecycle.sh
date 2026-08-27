@@ -26,8 +26,15 @@
 #
 # Usage: lifecycle.sh <state>
 #
-# Layer 1: standalone. The pure mapping (as_map) is split from the CLI writes
-# (as_apply) so the bats suite can drive it without a tmux server.
+# The pure mapping (as_map) is split from the CLI writes (as_apply) so the bats
+# suite can drive it without a tmux server. This file is private implementation;
+# agent.sh is the public command boundary.
+
+AGENT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/tmux.sh
+source "$AGENT_ROOT/lib/tmux.sh"
+# shellcheck source=lib/airline.sh
+source "$AGENT_ROOT/lib/airline.sh"
 
 # Prefix for the status contributor this plugin lights. The pane id is appended
 # at runtime so two agents in different panes of one window cannot overwrite or
@@ -38,16 +45,6 @@ as_key() { printf '%s-%s' "$AS_KEY_PREFIX" "${TMUX_PANE#%}"; }
 
 as_die() { printf 'agent-state: %s\n' "$*" >&2; return 1; }
 
-# Resolve the airline CLI (the supported API) via @airline-cli — the absolute
-# path airline publishes at load. That option is the contract for "airline is
-# active": set means loaded, unset means it isn't (so there's nothing to drive,
-# and we no-op). $AIRLINE_BIN overrides it for tests / non-TPM installs. Prints
-# the path, or empty when airline isn't active.
-as_airline() {
-  if [ -n "${AIRLINE_BIN:-}" ]; then printf '%s' "$AIRLINE_BIN"; return 0; fi
-  tmux show -gqv @airline-cli 2>/dev/null
-}
-
 # Warn — at most once per tmux server — that the airline CLI couldn't be resolved
 # (no @airline-cli, no $AIRLINE_BIN), then no-op. The status/health signals need
 # airline; without it there's nothing to drive. We *warn* (not fail) so a per-turn
@@ -55,11 +52,8 @@ as_airline() {
 # is visible — but only once, via a global tmux flag (no state files), since this
 # runs per hook. Reached only from inside tmux (callers guard on $TMUX first), so
 # a user who never wired the airline-backed signals sees no message at all.
-AS_WARN_FLAG="@agent-tools-airline-warned"
 as_warn_no_airline() {
-  [ "$(tmux show -gqv "$AS_WARN_FLAG" 2>/dev/null)" = 1 ] && return 0
-  tmux set -g "$AS_WARN_FLAG" 1 2>/dev/null
-  printf 'agent-state: airline CLI not found — set @airline-cli (load tmux-airline first) or the AIRLINE_BIN env var; status/health signals disabled\n' >&2
+  agent_airline_warn_missing agent-state
 }
 
 # Map a state to "<level> [transient]". Empty level = clear the lane.
@@ -83,20 +77,16 @@ as_apply() {
   read -r level transient <<<"$mapped"
 
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
-  airline=$(as_airline); [ -n "$airline" ] || { as_warn_no_airline; return 0; }
+  airline=$(agent_airline_resolve); [ -n "$airline" ] || { as_warn_no_airline; return 0; }
   key=$(as_key)
 
   if [ -n "$level" ]; then
     # airline drops any stale --transient flag itself when set without it, so a
     # previous 'done' never lingers as transient under a later sticky state.
-    if [ -n "$transient" ]; then
-      "$airline" status set "$key" "$level" --transient -t "$TMUX_PANE"
-    else
-      "$airline" status set "$key" "$level" -t "$TMUX_PANE"
-    fi
+    agent_airline_status_set "$airline" "$key" "$level" "$transient" "$TMUX_PANE"
   else
     # Lifecycle is independent from provider-specific health integrations.
-    "$airline" status clear "$key" -t "$TMUX_PANE"
+    agent_airline_status_clear "$airline" "$key" "$TMUX_PANE"
   fi
   # No refresh here: airline owns the redraw and issues it only when the badge or
   # health value actually changed, so re-setting 'working' on every tool call is

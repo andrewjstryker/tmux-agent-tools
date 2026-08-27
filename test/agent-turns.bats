@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for operations/turns.sh.
+# Tests for lib/turns.sh.
 #
 # at_next is pure. at_apply's tmux writes are checked against a fake `tmux` on
 # PATH that logs its arguments and can echo a canned `show` value (the current
@@ -7,7 +7,7 @@
 # test).
 
 setup() {
-  SCRIPT="${BATS_TEST_DIRNAME}/../operations/turns.sh"
+  SCRIPT="${BATS_TEST_DIRNAME}/../lib/turns.sh"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/agtn.XXXXXX")"
   FAKE_BIN="${TESTDIR}/bin"
   mkdir -p "$FAKE_BIN"

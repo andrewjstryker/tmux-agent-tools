@@ -15,13 +15,15 @@ tmux-airline release work is outside this repository's scope.
   reproduce Airline state or behavior.
 - [x] Add an architecture check enforcing both boundaries.
 
-## 2. Public CLI
+## 2. Public CLI — completed
 
-- Add `agent.sh` with the grammar in `DESIGN.md`, full
+- [x] Consolidate provider-neutral lifecycle and turn behavior under `lib/`;
+  reserve `adapters/` for provider-specific code.
+- [x] Add `agent.sh` with the grammar in `DESIGN.md`, full
   `help [<noun> [<verb>]]` inspection, deterministic version reporting, strict
   argument validation, and single dispatch.
-- Keep provider-native event names exact and case-sensitive.
-- Test parsing and delegation without requiring tmux.
+- [x] Keep provider-native event names exact and case-sensitive.
+- [x] Test parsing and delegation without requiring tmux.
 
 ## 3. Entry points
 

@@ -17,6 +17,10 @@ the command name:
 - `agent.tmux` is the TPM entry point. It publishes the absolute path to
   `agent.sh` in the global `@agent-cli` option.
 
+Apart from those root entry points and provider-specific files under
+`adapters/`, implementation lives under `lib/`. There is no separate
+`operations/` layer; lifecycle and turn behavior are private library modules.
+
 Provider configuration invokes `@agent-cli`; interactive shell users may invoke
 the installed `agent` facade. The current `agent-tools.tmux` entry point and the
 `@agent-tools-*-bin` executable options are removed. There are no compatibility

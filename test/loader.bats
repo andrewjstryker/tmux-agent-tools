@@ -18,8 +18,8 @@ teardown() {
 
 @test "loader publishes every executable under @agent-tools" {
   bash "$ROOT/agent-tools.tmux"
-  grep -q "set -g @agent-tools-state-bin $ROOT/operations/lifecycle.sh" "$FAKE_TMUX_LOG"
-  grep -q "set -g @agent-tools-turns-bin $ROOT/operations/turns.sh" "$FAKE_TMUX_LOG"
+  grep -q "set -g @agent-tools-state-bin $ROOT/lib/lifecycle.sh" "$FAKE_TMUX_LOG"
+  grep -q "set -g @agent-tools-turns-bin $ROOT/lib/turns.sh" "$FAKE_TMUX_LOG"
   grep -q "set -g @agent-tools-claude-context-bin $ROOT/adapters/claude/context.sh" "$FAKE_TMUX_LOG"
   grep -q "set -g @agent-tools-claude-bin $ROOT/adapters/claude/hooks.sh" "$FAKE_TMUX_LOG"
   grep -q "set -g @agent-tools-codex-bin $ROOT/adapters/codex/hooks.sh" "$FAKE_TMUX_LOG"

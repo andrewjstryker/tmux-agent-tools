@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # airline.sh — mechanical access to tmux-airline's public CLI.
 #
-# Discovery and command construction live here so operations and adapters name
+# Discovery and command construction live here so library modules and adapters name
 # Agent concepts rather than reproducing the external CLI grammar. Compatibility
 # policy is added in a later implementation chunk.
 
