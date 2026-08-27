@@ -12,7 +12,7 @@ fake_state_path() { # <global-option>
   printf '%s/global-%s' "$FAKE_TMUX_STATE_DIR" "$name"
 }
 
-if [[ "${1:-}" == show && "${2:-}" == -gqv ]]; then
+if [[ ("${1:-}" == show || "${1:-}" == show-options) && "${2:-}" == -gqv ]]; then
   option="${3:-}"
   case "$option" in
     @agent-tools-context-warn) printf '%s' "${FAKE_WARN:-}"; exit 0 ;;
@@ -21,6 +21,7 @@ if [[ "${1:-}" == show && "${2:-}" == -gqv ]]; then
     @agent-tools-usage-fail) printf '%s' "${FAKE_USAGE_FAIL:-}"; exit 0 ;;
     @agent-tools-airline-warned) printf '%s' "${FAKE_WARNED:-}"; exit 0 ;;
     @airline-cli) printf '%s' "${FAKE_AIRLINE_CLI:-}"; exit 0 ;;
+    @agent-cli) printf '%s' "${FAKE_AGENT_CLI:-}"; exit 0 ;;
   esac
   if [[ -n "${FAKE_TMUX_STATE_DIR:-}" ]]; then
     state="$(fake_state_path "$option")"

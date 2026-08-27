@@ -16,10 +16,17 @@ while IFS= read -r file; do
   while IFS=: read -r line_number line; do
     [[ ! "$line" =~ ^[[:space:]]*# ]] || continue
 
-    if [[ "$file" != lib/tmux.sh ]] && [[ "$line" =~ $tmux_invocation ]]; then
-      printf '%s:%s: direct tmux invocation bypasses lib/tmux.sh\n' \
-        "$file" "$line_number" >&2
-      violations=1
+    if [[ "$file" != lib/tmux.sh && "$line" =~ $tmux_invocation ]]; then
+      # The installed facade has one bootstrap exception: read @agent-cli from
+      # tmux because it cannot know the movable plugin path in advance.
+      # The pattern is intentionally literal shell source, not an expansion.
+      # shellcheck disable=SC2016
+      if [[ "$file" != agent || \
+            "$line" != *'cli=$(tmux show-options -gqv @agent-cli 2>/dev/null) || cli='* ]]; then
+        printf '%s:%s: direct tmux invocation bypasses lib/tmux.sh\n' \
+          "$file" "$line_number" >&2
+        violations=1
+      fi
     fi
 
     if [[ "$file" != lib/airline.sh ]]; then

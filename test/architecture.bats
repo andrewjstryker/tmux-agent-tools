@@ -18,6 +18,7 @@ teardown() {
   mkdir -p "$TESTDIR/lib" "$TESTDIR/operations"
   printf '# allowed boundary\ntmux show -gqv @example\n' > "$TESTDIR/lib/tmux.sh"
   printf '# allowed boundary\nagent_tmux_global_get @airline-cli\n' > "$TESTDIR/lib/airline.sh"
+  printf 'tmux kill-server\n' > "$TESTDIR/agent"
   printf '%s\n' \
     'value=$(tmux show -gqv @example)' \
     'cli=$(agent_tmux_global_get @airline-cli)' \

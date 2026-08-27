@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# The TPM entry point publishes stable paths under the project namespace.
+# The TPM entry point publishes exactly one stable executable handle.
 
 setup() {
   ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
@@ -16,16 +16,14 @@ teardown() {
   [ -n "${TESTDIR:-}" ] && rm -rf "$TESTDIR"
 }
 
-@test "loader publishes every executable under @agent-tools" {
-  bash "$ROOT/agent-tools.tmux"
-  grep -q "set -g @agent-tools-state-bin $ROOT/lib/lifecycle.sh" "$FAKE_TMUX_LOG"
-  grep -q "set -g @agent-tools-turns-bin $ROOT/lib/turns.sh" "$FAKE_TMUX_LOG"
-  grep -q "set -g @agent-tools-claude-context-bin $ROOT/adapters/claude/context.sh" "$FAKE_TMUX_LOG"
-  grep -q "set -g @agent-tools-claude-bin $ROOT/adapters/claude/hooks.sh" "$FAKE_TMUX_LOG"
-  grep -q "set -g @agent-tools-codex-bin $ROOT/adapters/codex/hooks.sh" "$FAKE_TMUX_LOG"
+@test "loader publishes only the public Agent CLI" {
+  bash "$ROOT/agent.tmux"
+  [[ "$(cat "$FAKE_TMUX_LOG")" == "set -g @agent-cli $ROOT/agent.sh" ]]
 }
 
-@test "loader does not publish legacy @agent names" {
-  bash "$ROOT/agent-tools.tmux"
-  ! grep -qE 'set -g @agent-(state|turns|context)-' "$FAKE_TMUX_LOG"
+@test "legacy loader and executable handles are absent" {
+  [[ ! -e "$ROOT/agent-tools.tmux" ]]
+  bash "$ROOT/agent.tmux"
+  ! grep -qE '@agent-tools-(state|turns|claude|codex|claude-context)-bin' \
+    "$FAKE_TMUX_LOG"
 }

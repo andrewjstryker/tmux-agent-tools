@@ -25,12 +25,13 @@ tmux-airline release work is outside this repository's scope.
 - [x] Keep provider-native event names exact and case-sensitive.
 - [x] Test parsing and delegation without requiring tmux.
 
-## 3. Entry points
+## 3. Entry points — completed
 
-- Add the installable `agent` facade and its missing/stale CLI diagnostics.
-- Replace `agent-tools.tmux` with `agent.tmux`, publishing only `@agent-cli`.
-- Add installation, facade, and loader tests.
-- Remove all `@agent-tools-*-bin` handles without aliases or fallback reads.
+- [x] Add the installable `agent` facade and its missing/stale CLI diagnostics.
+- [x] Replace `agent-tools.tmux` with `agent.tmux`, publishing only `@agent-cli`.
+- [x] Add installation, facade, and loader tests.
+- [x] Remove all `@agent-tools-*-bin` handles without aliases or fallback reads.
+- [x] Update checked-in provider configurations to invoke `@agent-cli`.
 
 ## 4. Airline 3.x compatibility
 
@@ -66,7 +67,6 @@ tmux-airline release work is outside this repository's scope.
 - Retain the supported Codex session, prompt, permission, post-tool, stop, and
   session-end mappings, with the same `startup|clear` reset boundary.
 - Keep Claude context and usage extraction on `statusLine`.
-- Update both checked-in provider configurations to invoke `@agent-cli`.
 
 ## 7. Completion
 

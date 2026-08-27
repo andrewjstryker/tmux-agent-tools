@@ -69,11 +69,13 @@ state, reduction, rendering, redraw behavior, and tmux topology. Agent never
 reads or writes Airline's private tmux options.
 
 Agent necessarily uses tmux for its own pane-scoped value and configuration, to
-resolve the calling pane's canonical session, and to read the documented
-`@airline-cli` bootstrap handle. Those calls are isolated in a small mechanical
-`lib/tmux.sh` boundary. This boundary exists to make ownership auditable: no
-other production file invokes `tmux`, and its API contains only operations that
-Agent legitimately owns or must resolve.
+resolve the calling pane's canonical session, and to read documented bootstrap
+handles. Plugin-internal calls are isolated in a small mechanical `lib/tmux.sh`
+boundary. The sole exception is the installed `agent` facade: because it cannot
+know or source a movable plugin directory, it directly reads only `@agent-cli`.
+No other production file invokes `tmux`. This boundary makes ownership
+auditable, and its API contains only operations that Agent legitimately owns or
+must resolve.
 
 All Airline access is isolated in `lib/airline.sh`. No other production file
 reads `@airline-cli`, checks the Airline version, or constructs an Airline

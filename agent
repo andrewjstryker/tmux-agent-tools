@@ -1,0 +1,27 @@
+#!/bin/sh
+# Installable facade for the Agent CLI. The plugin publishes its real CLI path
+# in @agent-cli, so this remains valid when TPM moves or upgrades the checkout.
+
+set -u
+
+if [ -n "${AGENT_TMUX:-}" ]; then
+  # AGENT_TMUX intentionally supports a command plus arguments for tests and
+  # alternate tmux servers.
+  # shellcheck disable=SC2086
+  cli=$(command $AGENT_TMUX show-options -gqv @agent-cli 2>/dev/null) || cli=
+else
+  cli=$(tmux show-options -gqv @agent-cli 2>/dev/null) || cli=
+fi
+
+if [ -z "$cli" ]; then
+  printf '%s\n' \
+    'agent: tmux-agent-tools is not initialized; start or reload tmux first' >&2
+  exit 1
+fi
+
+if [ ! -x "$cli" ]; then
+  printf 'agent: configured CLI is not executable: %s\n' "$cli" >&2
+  exit 1
+fi
+
+exec "$cli" "$@"

@@ -74,9 +74,13 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "checked-in provider configurations are valid JSON and use adapter entry points" {
+@test "checked-in provider configurations are valid JSON and use the public CLI" {
   jq -e . "$ROOT/examples/claude-settings.json" "$ROOT/examples/codex-hooks.json" >/dev/null
-  grep -q "@agent-tools-claude-bin" "$ROOT/examples/claude-settings.json"
-  grep -q "@agent-tools-codex-bin" "$ROOT/examples/codex-hooks.json"
-  ! grep -q "@agent-tools-state-bin" "$ROOT/examples/claude-settings.json" "$ROOT/examples/codex-hooks.json"
+  jq -r '.. | objects | .command? // empty' "$ROOT/examples/claude-settings.json" |
+    grep -q '"$cli" hook claude'
+  jq -r '.. | objects | .command? // empty' "$ROOT/examples/codex-hooks.json" |
+    grep -q '"$cli" hook codex'
+  grep -q '@agent-cli' "$ROOT/examples/claude-settings.json" "$ROOT/examples/codex-hooks.json"
+  ! grep -qE '@agent-tools-(state|turns|claude|codex|claude-context)-bin' \
+    "$ROOT/examples/claude-settings.json" "$ROOT/examples/codex-hooks.json"
 }
