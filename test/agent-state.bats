@@ -14,19 +14,8 @@ setup() {
   export FAKE_TMUX_LOG="${TESTDIR}/tmux.log"
   export FAKE_AIRLINE_LOG="${TESTDIR}/airline.log"
   : > "$FAKE_TMUX_LOG"; : > "$FAKE_AIRLINE_LOG"
-  cat > "${FAKE_BIN}/tmux" <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
-# Emulate `tmux show -gqv @agent-tools-airline-warned` returning the warn flag.
-case "$*" in
-  *@agent-tools-airline-warned*) printf '%s' "${FAKE_WARNED:-}" ;;
-esac
-SH
-  cat > "${FAKE_BIN}/airline" <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_AIRLINE_LOG"
-SH
-  chmod +x "${FAKE_BIN}/tmux" "${FAKE_BIN}/airline"
+  ln -s "${BATS_TEST_DIRNAME}/support/fake-tmux" "${FAKE_BIN}/tmux"
+  ln -s "${BATS_TEST_DIRNAME}/support/fake-airline" "${FAKE_BIN}/airline"
   PATH="${FAKE_BIN}:${PATH}"
   export AIRLINE_BIN="${FAKE_BIN}/airline"
   export TMUX="/tmp/fake,1,0"

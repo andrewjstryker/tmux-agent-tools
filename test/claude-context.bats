@@ -17,27 +17,8 @@ setup() {
   export FAKE_WARN=80 FAKE_FAIL=90                # context thresholds the fake `tmux show` returns
   export FAKE_USAGE_WARN=80 FAKE_USAGE_FAIL=90    # usage-limit thresholds
   : > "$FAKE_TMUX_LOG"; : > "$FAKE_AIRLINE_LOG"
-  cat > "${FAKE_BIN}/tmux" <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
-case "$*" in
-  *@agent-tools-context-warn*)  printf '%s' "${FAKE_WARN}" ;;
-  *@agent-tools-context-fail*)  printf '%s' "${FAKE_FAIL}" ;;
-  *@agent-tools-usage-warn*)    printf '%s' "${FAKE_USAGE_WARN}" ;;
-  *@agent-tools-usage-fail*)    printf '%s' "${FAKE_USAGE_FAIL}" ;;
-  *@agent-tools-airline-warned*) printf '%s' "${FAKE_WARNED:-}" ;;
-esac
-SH
-  cat > "${FAKE_BIN}/airline" <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_AIRLINE_LOG"
-if [ "${1:-}" = health ] && [ "${2:-}" = set ]; then
-  case "${4:-}" in ok|warn|fail) ;; *) exit 64 ;; esac
-fi
-if [ "${FAKE_HEALTH_FAIL:-}" = 1 ] && [ "${1:-}" = health ]; then exit 65; fi
-if [ "${1:-}" = problem ] && [ "${2:-}" = set ] && [ "${4:-}" != warn ]; then exit 66; fi
-SH
-  chmod +x "${FAKE_BIN}/tmux" "${FAKE_BIN}/airline"
+  ln -s "${BATS_TEST_DIRNAME}/support/fake-tmux" "${FAKE_BIN}/tmux"
+  ln -s "${BATS_TEST_DIRNAME}/support/fake-airline" "${FAKE_BIN}/airline"
   PATH="${FAKE_BIN}:${PATH}"
   export AIRLINE_BIN="${FAKE_BIN}/airline"
   export TMUX="/tmp/fake,1,0"
@@ -261,7 +242,7 @@ teardown() {
 
 @test "apply: airline health failure becomes a graceful adapter problem" {
   source "$SCRIPT"
-  export FAKE_HEALTH_FAIL=1
+  export FAKE_AIRLINE_FAIL=health
   local json='{"context_window":{"used_percentage":40}}'
   out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
   [ "$out" = "$json" ]

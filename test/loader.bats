@@ -8,11 +8,7 @@ setup() {
   mkdir -p "$FAKE_BIN"
   export FAKE_TMUX_LOG="${TESTDIR}/tmux.log"
   : > "$FAKE_TMUX_LOG"
-  cat > "${FAKE_BIN}/tmux" <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
-SH
-  chmod +x "${FAKE_BIN}/tmux"
+  ln -s "${BATS_TEST_DIRNAME}/support/fake-tmux" "${FAKE_BIN}/tmux"
   PATH="${FAKE_BIN}:${PATH}"
 }
 

@@ -27,7 +27,7 @@ The public grammar is:
 
 ```text
 agent version
-agent help [<noun>]
+agent help [<noun> [<verb>]]
 
 agent lifecycle set <working|needs-input|done>
 agent lifecycle clear
@@ -120,9 +120,21 @@ projects the mutation to sessions that happen to link the same window. Airline
 assigns no meaning to the message. Agent may include a pane or window identifier
 when that helps the user diagnose the failed capability.
 
-Problem contributors must have independent ownership. A successful reporter
-must not clear another reporter's failure; pane-local telemetry failures
-therefore use pane-qualified keys.
+Problem keys identify the failed capability at the narrowest scope that owns the
+failure. A shared Claude dependency such as `jq` uses one stable key, for example
+`agent-claude-telemetry-jq`, so repeated evaluations and multiple Claude panes do
+not create copies of the same problem. A failure that belongs to one provider
+input stream uses a pane-qualified key, for example
+`agent-claude-telemetry-input-3`, so success in another pane cannot clear it.
+Airline's keyed contributor semantics make identical reports idempotent; Agent
+does not maintain a separate transition marker.
+
+An advertised telemetry capability that cannot operate is a `fail` problem. This
+includes a missing `jq` while Claude telemetry is configured, provider input that
+cannot be interpreted, and a failed Airline health mutation through an otherwise
+compatible CLI. A validly absent optional measurement is normal operation: its
+health contribution is cleared and no problem is reported. `jq` is not required
+for Codex or for provider-neutral lifecycle and turn operations.
 
 ## Provider mapping
 
@@ -132,14 +144,16 @@ state and do not introduce buffering or a resident process.
 
 Claude uses `UserPromptSubmit` for the start of work, `PermissionRequest` for a
 direct request for user input, `PostToolBatch` for recovery to working after a
-resolved tool batch, and `Stop` for completion. Session boundaries clear
-Claude-owned state. Generic `Notification` and per-tool `PostToolUse` are not
-used as lifecycle transitions. Claude context and usage telemetry remains on
-its `statusLine` input, where those measurements are supplied.
+resolved tool batch, and `Stop` for completion. Only a new or explicitly cleared
+session (`startup|clear`) resets Claude-owned state; resume and compaction retain
+it. Generic `Notification` and per-tool `PostToolUse` are not used as lifecycle
+transitions. Claude context and usage telemetry remains on its `statusLine`
+input, where those measurements are supplied.
 
 Codex uses its supported native session, prompt, permission, post-tool, stop,
-and session-end events. Provider configurations invoke the shared `agent hook`
-surface and do not call internal operations directly.
+and session-end events. Its session-start reset likewise matches only
+`startup|clear`, not resume or compaction. Provider configurations invoke the
+shared `agent hook` surface and do not call internal operations directly.
 
 ## Testing strategy
 
@@ -168,8 +182,8 @@ Tests are divided by responsibility:
    and 4.x releases, malformed output, a failing `version` command, warn-once
    behavior, and absence of mutations after rejection.
 4. Telemetry tests cover stdin passthrough, health reporting, capability
-   problems, opaque diagnostic messages, recovery, and independent pane-owned
-   problem contributors.
+   problems, opaque diagnostic messages, recovery, stable shared-capability
+   keys, and independently owned pane-specific contributors.
 5. Provider tests cover the checked-in native event mappings and configuration
    JSON.
 6. CLI tests cover grammar and single dispatch without tmux; facade and loader
@@ -185,7 +199,7 @@ Implementation proceeds in independently reviewable chunks:
 
 1. Establish test support and the tmux/Airline boundaries while preserving
    existing behavior.
-2. Add `agent.sh` grammar and dispatch tests.
+2. Add `agent.sh` grammar, full nested-help inspection, and dispatch tests.
 3. Add `agent`, `agent.tmux`, installation behavior, and their tests; remove the
    old executable handles without aliases.
 4. Add the Airline 3.x compatibility guard and degraded-installation tests.

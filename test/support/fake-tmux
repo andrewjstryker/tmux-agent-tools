@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Small tmux protocol fake shared by unit and entry-point tests.
+
+set -u
+
+if [[ -n "${FAKE_TMUX_LOG:-}" ]]; then
+  printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
+fi
+
+fake_state_path() { # <global-option>
+  local name="${1#@}"
+  printf '%s/global-%s' "$FAKE_TMUX_STATE_DIR" "$name"
+}
+
+if [[ "${1:-}" == show && "${2:-}" == -gqv ]]; then
+  option="${3:-}"
+  case "$option" in
+    @agent-tools-context-warn) printf '%s' "${FAKE_WARN:-}"; exit 0 ;;
+    @agent-tools-context-fail) printf '%s' "${FAKE_FAIL:-}"; exit 0 ;;
+    @agent-tools-usage-warn) printf '%s' "${FAKE_USAGE_WARN:-}"; exit 0 ;;
+    @agent-tools-usage-fail) printf '%s' "${FAKE_USAGE_FAIL:-}"; exit 0 ;;
+    @agent-tools-airline-warned) printf '%s' "${FAKE_WARNED:-}"; exit 0 ;;
+    @airline-cli) printf '%s' "${FAKE_AIRLINE_CLI:-}"; exit 0 ;;
+  esac
+  if [[ -n "${FAKE_TMUX_STATE_DIR:-}" ]]; then
+    state="$(fake_state_path "$option")"
+    [[ ! -f "$state" ]] || { command cat "$state"; exit 0; }
+  fi
+  exit 0
+fi
+
+if [[ "${1:-}" == show && "${2:-}" == -pqv ]]; then
+  if [[ -n "${FAKE_TMUX_PANE_VALUE_FILE:-}" ]]; then
+    command cat "$FAKE_TMUX_PANE_VALUE_FILE"
+  else
+    printf '%s' "${FAKE_TMUX_PANE_VALUE:-}"
+  fi
+  exit 0
+fi
+
+if [[ "${1:-}" == set && "${2:-}" == -g && -n "${FAKE_TMUX_STATE_DIR:-}" ]]; then
+  mkdir -p "$FAKE_TMUX_STATE_DIR"
+  printf '%s' "${4:-}" > "$(fake_state_path "${3:-}")"
+  exit 0
+fi
+
+if [[ "${1:-}" == display-message ]]; then
+  printf '%s\n' "${FAKE_TMUX_SESSION:-\$1}"
+  exit 0
+fi
+
+exit 0

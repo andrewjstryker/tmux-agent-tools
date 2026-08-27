@@ -4,21 +4,22 @@ The target architecture and public contracts are recorded in `DESIGN.md`. This
 file tracks the remaining implementation in independently reviewable chunks.
 tmux-airline release work is outside this repository's scope.
 
-## 1. Mechanical boundaries and test support
+## 1. Mechanical boundaries and test support — completed
 
-- Add the narrow `lib/tmux.sh` boundary and move every production `tmux` call
+- [x] Add the narrow `lib/tmux.sh` boundary and move every production `tmux` call
   behind it without changing behavior.
-- Add `lib/airline.sh` as the only owner of Airline discovery and command
+- [x] Add `lib/airline.sh` as the only owner of Airline discovery and command
   construction.
-- Add deliberately small tmux and Airline test doubles. The Airline fake records
+- [x] Add deliberately small tmux and Airline test doubles. The Airline fake records
   arguments, reports a configured version, and injects failures; it does not
   reproduce Airline state or behavior.
-- Add an architecture check enforcing both boundaries.
+- [x] Add an architecture check enforcing both boundaries.
 
 ## 2. Public CLI
 
-- Add `agent.sh` with the grammar in `DESIGN.md`, deterministic help and version
-  leaves, strict argument validation, and single dispatch.
+- Add `agent.sh` with the grammar in `DESIGN.md`, full
+  `help [<noun> [<verb>]]` inspection, deterministic version reporting, strict
+  argument validation, and single dispatch.
 - Keep provider-native event names exact and case-sensitive.
 - Test parsing and delegation without requiring tmux.
 
@@ -48,16 +49,20 @@ tmux-airline release work is outside this repository's scope.
   do not pass a pane target or project through linked sessions.
 - Treat problem messages as opaque to Airline. Include pane/window context when
   useful to the user.
-- Pane-qualify telemetry problem contributors so one reporter cannot clear
-  another reporter's failure.
+- Report unavailable advertised telemetry as `fail`. A missing `jq` is a Claude
+  telemetry failure only; Codex, lifecycle, and turns do not require it.
+- Give shared failures stable capability keys so repeated evaluations and panes
+  do not duplicate one problem. Pane-qualify only failures owned by one input
+  stream so another pane cannot clear them.
 
 ## 6. Provider adapters and examples
 
 - Map Claude `UserPromptSubmit`, `PermissionRequest`, `PostToolBatch`, `Stop`,
-  and session boundaries to the coarse lifecycle operations. Remove generic
+  and session boundaries to the coarse lifecycle operations. Reset only for
+  `startup|clear`; preserve state across resume and compaction. Remove generic
   `Notification` and per-tool `PostToolUse` lifecycle wiring.
 - Retain the supported Codex session, prompt, permission, post-tool, stop, and
-  session-end mappings.
+  session-end mappings, with the same `startup|clear` reset boundary.
 - Keep Claude context and usage extraction on `statusLine`.
 - Update both checked-in provider configurations to invoke `@agent-cli`.
 

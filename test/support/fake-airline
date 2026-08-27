@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Configurable protocol fake for Agent's outbound Airline calls.
+
+set -u
+
+if [[ -n "${FAKE_AIRLINE_LOG:-}" ]]; then
+  printf '%s\n' "$*" >> "$FAKE_AIRLINE_LOG"
+fi
+
+# Optional lossless stream: each call is encoded as argc followed by that many
+# NUL-terminated arguments. Tests that care about spaces or empty arguments can
+# decode this instead of using the human-readable log above.
+if [[ -n "${FAKE_AIRLINE_ARGV_LOG:-}" ]]; then
+  printf '%s\0' "$#" >> "$FAKE_AIRLINE_ARGV_LOG"
+  printf '%s\0' "$@" >> "$FAKE_AIRLINE_ARGV_LOG"
+fi
+
+if [[ "${1:-}" == version ]]; then
+  [[ "${FAKE_AIRLINE_VERSION_FAIL:-}" != 1 ]] || exit "${FAKE_AIRLINE_FAIL_STATUS:-65}"
+  printf '%s\n' "${FAKE_AIRLINE_VERSION:-3.0.0}"
+  exit 0
+fi
+
+if [[ -n "${FAKE_AIRLINE_FAIL:-}" ]]; then
+  case "$*" in
+    "$FAKE_AIRLINE_FAIL"|"$FAKE_AIRLINE_FAIL "*)
+      exit "${FAKE_AIRLINE_FAIL_STATUS:-65}"
+      ;;
+  esac
+fi
+
+exit 0

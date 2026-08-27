@@ -12,18 +12,10 @@ setup() {
   FAKE_BIN="${TESTDIR}/bin"
   mkdir -p "$FAKE_BIN"
   export FAKE_TMUX_LOG="${TESTDIR}/tmux.log"
-  export FAKE_TMUX_SHOW="${TESTDIR}/show"   # contents echoed for `tmux show ...`
+  export FAKE_TMUX_PANE_VALUE_FILE="${TESTDIR}/show"
   : > "$FAKE_TMUX_LOG"
-  : > "$FAKE_TMUX_SHOW"
-  cat > "${FAKE_BIN}/tmux" <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
-# Emulate `tmux show -pqv ... @agent-tools-turns` returning the current value.
-case "$*" in
-  show*) cat "$FAKE_TMUX_SHOW" ;;
-esac
-SH
-  chmod +x "${FAKE_BIN}/tmux"
+  : > "$FAKE_TMUX_PANE_VALUE_FILE"
+  ln -s "${BATS_TEST_DIRNAME}/support/fake-tmux" "${FAKE_BIN}/tmux"
   PATH="${FAKE_BIN}:${PATH}"
   export TMUX="/tmp/fake,1,0"
   export TMUX_PANE="%3"
@@ -51,14 +43,14 @@ teardown() {
 
 @test "apply: bump from unset sets the pane counter to 1" {
   source "$SCRIPT"
-  printf '' > "$FAKE_TMUX_SHOW"        # no existing counter
+  printf '' > "$FAKE_TMUX_PANE_VALUE_FILE" # no existing counter
   at_apply bump
   grep -q "set -p -t %3 @agent-tools-turns 1" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: bump increments an existing counter" {
   source "$SCRIPT"
-  printf '4\n' > "$FAKE_TMUX_SHOW"     # current counter is 4
+  printf '4\n' > "$FAKE_TMUX_PANE_VALUE_FILE" # current counter is 4
   at_apply bump
   grep -q "set -p -t %3 @agent-tools-turns 5" "$FAKE_TMUX_LOG"
 }

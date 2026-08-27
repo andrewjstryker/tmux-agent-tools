@@ -24,6 +24,8 @@
 # The core operations know nothing about a specific agent. Provider adapters
 # translate their own event and payload formats into those operations / airline.
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/tmux.sh
+source "$CURRENT_DIR/lib/tmux.sh"
 
 # Publish both layers so agent configuration never hardcodes the install dir:
 #   "$(tmux show -gqv @agent-tools-state-bin)"          needs-input
@@ -31,11 +33,11 @@ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #   "$(tmux show -gqv @agent-tools-codex-bin)"          PermissionRequest
 #   "$(tmux show -gqv @agent-tools-claude-context-bin)" # Claude statusLine adapter
 #   "$(tmux show -gqv @agent-tools-turns-bin)"          bump
-tmux set -g @agent-tools-state-bin          "$CURRENT_DIR/operations/lifecycle.sh"
-tmux set -g @agent-tools-claude-context-bin "$CURRENT_DIR/adapters/claude/context.sh"
-tmux set -g @agent-tools-claude-bin         "$CURRENT_DIR/adapters/claude/hooks.sh"
-tmux set -g @agent-tools-codex-bin          "$CURRENT_DIR/adapters/codex/hooks.sh"
-tmux set -g @agent-tools-turns-bin          "$CURRENT_DIR/operations/turns.sh"
+agent_tmux_global_set @agent-tools-state-bin          "$CURRENT_DIR/operations/lifecycle.sh"
+agent_tmux_global_set @agent-tools-claude-context-bin "$CURRENT_DIR/adapters/claude/context.sh"
+agent_tmux_global_set @agent-tools-claude-bin         "$CURRENT_DIR/adapters/claude/hooks.sh"
+agent_tmux_global_set @agent-tools-codex-bin          "$CURRENT_DIR/adapters/codex/hooks.sh"
+agent_tmux_global_set @agent-tools-turns-bin          "$CURRENT_DIR/operations/turns.sh"
 
 # No registration step. airline's status keys are created implicitly on the first
 # `status set`, and its glyphs are fixed per level (○ active, ● result, ◆
