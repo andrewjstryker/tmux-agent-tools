@@ -1,54 +1,69 @@
-# Airline integration follow-up
+# Release implementation worklist
 
-This note records the remaining work after tmux-airline 2.1 establishes its
-contributor contract. It is intentionally an agent-tools worklist, not a request
-for additional Airline scope.
+The target architecture and public contracts are recorded in `DESIGN.md`. This
+file tracks the remaining implementation in independently reviewable chunks.
+tmux-airline release work is outside this repository's scope.
 
-## Compatibility
+## 1. Mechanical boundaries and test support
 
-- Require a compatible 2.1 contract from `airline version` before invoking
-  Airline-backed operations. Resolve the executable through `@airline-cli`; that
-  option remains only the bootstrap needed to reach Airline's public interface.
-- Keep missing or incompatible Airline behavior quiet enough for provider hooks:
-  report the configuration failure once and otherwise no-op.
+- Add the narrow `lib/tmux.sh` boundary and move every production `tmux` call
+  behind it without changing behavior.
+- Add `lib/airline.sh` as the only owner of Airline discovery and command
+  construction.
+- Add deliberately small tmux and Airline test doubles. The Airline fake records
+  arguments, reports a configured version, and injects failures; it does not
+  reproduce Airline state or behavior.
+- Add an architecture check enforcing both boundaries.
 
-## Problem semantics
+## 2. Public CLI
 
-- Remove the proposed pane-targeted `problem ... -t <pane>` calls and the linked-
-  session projection assumption.
-- Airline problems are explicitly session-scoped. A problem means Airline or one
-  of its contributors cannot provide an advertised capability; it is not agent
-  lifecycle, window attention, pane attention, or resource pressure.
-- When an adapter itself cannot work as advertised (for example, a required parser
-  is unavailable or valid provider input cannot be interpreted), determine the
-  canonical session in agent-tools and call the existing public contract:
+- Add `agent.sh` with the grammar in `DESIGN.md`, deterministic help and version
+  leaves, strict argument validation, and single dispatch.
+- Keep provider-native event names exact and case-sensitive.
+- Test parsing and delegation without requiring tmux.
 
-      airline problem set <session> <key> <warn|fail> <message>
-      airline problem clear <session> <key>
+## 3. Entry points
 
-  Do not ask Airline to infer session ownership from a pane, and do not propagate a
-  problem through sessions that happen to link the same window.
-- Continue reporting ordinary context and usage pressure through window-scoped
-  `health`; those values do not become problems merely because they are severe.
+- Add the installable `agent` facade and its missing/stale CLI diagnostics.
+- Replace `agent-tools.tmux` with `agent.tmux`, publishing only `@agent-cli`.
+- Add installation, facade, and loader tests.
+- Remove all `@agent-tools-*-bin` handles without aliases or fallback reads.
 
-## Provider hooks
+## 4. Airline 3.x compatibility
 
-- Review each provider event against the coarse lifecycle transitions: working,
-  needs input, and done. Do not wire a per-tool event unless it represents a real
-  transition that another event does not already cover.
-- For Claude, evaluate `PostToolBatch` instead of `PostToolUse` if a post-tool
-  recovery transition is still required. `UserPromptSubmit` already establishes
-  working at the start of a turn.
-- Keep Claude context and usage reporting on `statusLine`, because that is where
-  Claude supplies the required measurements. Repeated unchanged reports are safe:
-  Airline 2.1 compares the transaction workspace with its baseline, flushes only
-  changed options, and redraws only when the reduced visible value changes.
-- Verify Codex event availability against the supported Codex hook surface before
-  shipping the checked-in example; do not assume Claude's hook vocabulary.
+- Require the public `airline version` contract to be `>= 3.0.0` and `< 4.0.0`
+  before an Airline-backed mutation.
+- Warn once per tmux server and otherwise no-op for a missing executable, a
+  failed or malformed version response, and an incompatible version.
+- Test accepted 3.x versions, rejected 2.x and 4.x versions, malformed output,
+  command failure, warning suppression, and absence of mutations after rejection.
 
-## Completion
+## 5. Signal and problem semantics
 
-- Update adapters, examples, README requirements, and tests together.
-- Test compatible, missing, and incompatible Airline installations.
-- Test provider event mappings without adding buffering, a resident process, or
-  adapter-owned copies of Airline state.
+- Keep lifecycle on window-scoped `status` and context/usage pressure on
+  window-scoped `health`, including `fail` health.
+- Resolve the calling pane to one canonical tmux session before reporting a
+  plugin capability problem.
+- Use only `airline problem set <session> ...` and `problem clear <session> ...`;
+  do not pass a pane target or project through linked sessions.
+- Treat problem messages as opaque to Airline. Include pane/window context when
+  useful to the user.
+- Pane-qualify telemetry problem contributors so one reporter cannot clear
+  another reporter's failure.
+
+## 6. Provider adapters and examples
+
+- Map Claude `UserPromptSubmit`, `PermissionRequest`, `PostToolBatch`, `Stop`,
+  and session boundaries to the coarse lifecycle operations. Remove generic
+  `Notification` and per-tool `PostToolUse` lifecycle wiring.
+- Retain the supported Codex session, prompt, permission, post-tool, stop, and
+  session-end mappings.
+- Keep Claude context and usage extraction on `statusLine`.
+- Update both checked-in provider configurations to invoke `@agent-cli`.
+
+## 7. Completion
+
+- Update the README, requirements, examples, and release metadata to the final
+  CLI and Airline 3.x contract.
+- Run the complete fake-based suite and shellcheck. No real Airline installation
+  is required to establish the Agent contract.
