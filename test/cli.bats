@@ -182,7 +182,13 @@ assert_dispatch() {
   run "$CLI" hook claude sessionstart
   [[ "$status" -ne 0 ]]
 
-  run "$CLI" hook claude PermissionRequest
+  run "$CLI" hook claude Notification
+  [[ "$status" -ne 0 ]]
+
+  run "$CLI" hook claude PostToolUse
+  [[ "$status" -ne 0 ]]
+
+  run "$CLI" hook codex PostToolBatch
   [[ "$status" -ne 0 ]]
 
   run "$CLI" hook codex notification

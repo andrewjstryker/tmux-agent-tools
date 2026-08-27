@@ -42,35 +42,67 @@ tmux-airline release work is outside this repository's scope.
 - [x] Test accepted 3.x versions, rejected 2.x and 4.x versions, malformed output,
   command failure, warning suppression, and absence of mutations after rejection.
 
-## 5. Signal and problem semantics
+## 5. Signal and problem semantics — completed
 
-- Keep lifecycle on window-scoped `status` and context/usage pressure on
+- [x] Keep lifecycle on window-scoped `status` and context/usage pressure on
   window-scoped `health`, including `fail` health.
-- Resolve the calling pane to one canonical tmux session before reporting a
+- [x] Resolve the calling pane to one canonical tmux session before reporting a
   plugin capability problem.
-- Use only `airline problem set <session> ...` and `problem clear <session> ...`;
+- [x] Use only `airline problem set <session> ...` and `problem clear <session> ...`;
   do not pass a pane target or project through linked sessions.
-- Treat problem messages as opaque to Airline. Include pane/window context when
+- [x] Treat problem messages as opaque to Airline. Include pane/window context when
   useful to the user.
-- Report unavailable advertised telemetry as `fail`. A missing `jq` is a Claude
+- [x] Report unavailable advertised telemetry as `fail`. A missing `jq` is a Claude
   telemetry failure only; Codex, lifecycle, and turns do not require it.
-- Give shared failures stable capability keys so repeated evaluations and panes
+- [x] Give shared failures stable capability keys so repeated evaluations and panes
   do not duplicate one problem. Pane-qualify only failures owned by one input
   stream so another pane cannot clear them.
 
-## 6. Provider adapters and examples
+## 6. Provider adapters and examples — completed
 
-- Map Claude `UserPromptSubmit`, `PermissionRequest`, `PostToolBatch`, `Stop`,
+- [x] Map Claude `UserPromptSubmit`, `PermissionRequest`, `PostToolBatch`, `Stop`,
   and session boundaries to the coarse lifecycle operations. Reset only for
   `startup|clear`; preserve state across resume and compaction. Remove generic
   `Notification` and per-tool `PostToolUse` lifecycle wiring.
-- Retain the supported Codex session, prompt, permission, post-tool, stop, and
+- [x] Retain the supported Codex session, prompt, permission, post-tool, stop, and
   session-end mappings, with the same `startup|clear` reset boundary.
-- Keep Claude context and usage extraction on `statusLine`.
+- [x] Keep Claude context and usage extraction on `statusLine`.
 
-## 7. Completion
+## 7. Structural review follow-up
 
-- Update the README, requirements, examples, and release metadata to the final
+- [ ] Use one internal execution model. Prefer sourcing the implementation once in
+  `agent.sh` and having provider adapters call lifecycle, turn, and telemetry
+  functions directly instead of rediscovering those components as subprocesses.
+- [ ] Namespace sourced globals and internal functions by component. Remove generic
+  names such as `AGENT_ROOT`, `ADAPTER_DIR`, and `PROJECT_DIR` whose values currently
+  depend on source order.
+- [ ] Normalize internal vocabulary around the public nouns: `lifecycle`, `turns`,
+  and `telemetry`. Replace cryptic `as_*`, `at_*`, and `ac_*` names, update stale
+  `agent-state` diagnostics, and remove private `idle`/`reset` aliases where the
+  public operation is `clear`.
+- [ ] Rename the Claude `context.sh` implementation to reflect that it owns
+  telemetry. Keep it as one module while its pipeline remains linear; split input
+  parsing, health calculation, and problem reporting only if the module grows or
+  those parts need independent reuse.
+- [ ] Move generic warn-once behavior out of the Airline boundary. `lib/airline.sh`
+  should own Airline discovery, compatibility, and commands, while shared
+  diagnostics should have a provider-neutral home.
+- [ ] Correct the architecture documentation to state the deliberate facade
+  exception: production tmux calls are confined to `lib/tmux.sh`, except that the
+  installable `agent` facade reads `@agent-cli` to find the actual CLI.
+- [ ] Decide whether crash recovery warrants one public aggregate reset operation.
+  Today users can clear lifecycle, turns, and Claude telemetry independently, but
+  resetting a broken session completely requires three commands. Any aggregate
+  operation must be added deliberately to the settled CLI grammar and tests.
+- [ ] Measure the Claude status-line success path before release. It currently
+  performs Airline version discovery, session resolution, `jq`, two health
+  mutations, and three problem clears per evaluation. Optimize only if the measured
+  process cost is material; Airline idempotence already avoids redundant state and
+  redraw changes.
+
+## 8. Completion
+
+- [ ] Update the README, requirements, examples, and release metadata to the final
   CLI and Airline 3.x contract.
-- Run the complete fake-based suite and shellcheck. No real Airline installation
+- [ ] Run the complete fake-based suite and shellcheck. No real Airline installation
   is required to establish the Agent contract.

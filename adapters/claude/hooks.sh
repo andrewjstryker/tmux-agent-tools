@@ -21,11 +21,11 @@ ch_apply() {
       "$CH_STATE_BIN" working
       "$CH_TURNS_BIN" bump
       ;;
-    PostToolUse)
-      "$CH_STATE_BIN" working
-      ;;
-    Notification)
+    PermissionRequest)
       "$CH_STATE_BIN" needs-input
+      ;;
+    PostToolBatch)
+      "$CH_STATE_BIN" working
       ;;
     Stop)
       "$CH_STATE_BIN" "done"
@@ -43,7 +43,7 @@ ch_apply() {
 
 ch_main() {
   set -euo pipefail
-  [ $# -eq 1 ] || ch_die "usage: hooks.sh <SessionStart|UserPromptSubmit|PostToolUse|Notification|Stop|SessionEnd>"
+  [ $# -eq 1 ] || ch_die "usage: hooks.sh <SessionStart|UserPromptSubmit|PermissionRequest|PostToolBatch|Stop|SessionEnd>"
   ch_apply "$1"
 }
 

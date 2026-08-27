@@ -23,6 +23,7 @@ setup() {
   export AIRLINE_BIN="${FAKE_BIN}/airline"
   export TMUX="/tmp/fake,1,0"
   export TMUX_PANE="%3"
+  export FAKE_TMUX_SESSION='$7'
 }
 
 teardown() {
@@ -160,7 +161,9 @@ teardown() {
   ac_clear
   grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
   grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
-  grep -q "problem clear agent-tools-claude-context -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-update-3' "$FAKE_AIRLINE_LOG"
+  ! grep -q 'problem clear .*agent-claude-telemetry-jq' "$FAKE_AIRLINE_LOG"
 }
 
 @test "main: clear emits no statusLine output" {
@@ -218,7 +221,7 @@ teardown() {
   [ ! -s "${TESTDIR}/err" ]                        # silent the second time
 }
 
-@test "apply: missing jq passes JSON through, clears stale health, and raises a pane-originated problem" {
+@test "apply: missing jq is a shared fail problem in one canonical session" {
   source "$SCRIPT"
   ac_have_jq() { return 1; }                        # simulate jq absent via the seam
   local json='{"context_window":{"used_percentage":95}}'
@@ -228,7 +231,9 @@ teardown() {
   grep -q "jq not found" "${TESTDIR}/err"           # the missing dep is visible
   grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
   grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
-  grep -q "problem set agent-tools-claude-context warn .*jq not found.*-t %3" "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set $7 agent-claude-telemetry-jq fail .*jq not found' "$FAKE_AIRLINE_LOG"
+  ! grep -q 'problem .* -t ' "$FAKE_AIRLINE_LOG"
+  [ "$(grep -c 'display-message -p -t %3 #{session_id}' "$FAKE_TMUX_LOG")" -eq 1 ]
 }
 
 @test "apply: malformed JSON degrades without breaking passthrough" {
@@ -237,7 +242,9 @@ teardown() {
   out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
   [ "$out" = "$json" ]
   grep -q "invalid statusLine JSON" "${TESTDIR}/err"
-  grep -q "problem set agent-tools-claude-context warn .*invalid statusLine JSON.*-t %3" "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-jq' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set $7 agent-claude-telemetry-input-3 fail .*pane %3: invalid statusLine JSON' "$FAKE_AIRLINE_LOG"
+  ! grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: airline health failure becomes a graceful adapter problem" {
@@ -247,25 +254,64 @@ teardown() {
   out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
   [ "$out" = "$json" ]
   grep -q "airline health update failed" "${TESTDIR}/err"
-  grep -q "problem set agent-tools-claude-context warn .*airline health update failed.*-t %3" "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-jq' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set $7 agent-claude-telemetry-update-3 fail .*pane %3: airline health update failed' "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: successful evaluation reports recovery from the pane origin" {
+@test "apply: successful evaluation clears shared and pane-owned problems" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":40}}' | ac_apply >/dev/null
-  grep -q "problem clear agent-tools-claude-context -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-jq' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-update-3' "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: degradation re-reports current capability for linked-session convergence" {
+@test "apply: degradation re-reports the same stable shared capability key" {
   source "$SCRIPT"
   ac_have_jq() { return 1; }
   echo '{}' | ac_apply >/dev/null
   echo '{}' | ac_apply >/dev/null
-  [ "$(grep -c "problem set agent-tools-claude-context warn .*jq not found.*-t %3" "$FAKE_AIRLINE_LOG")" -eq 2 ]
+  [ "$(grep -c 'problem set $7 agent-claude-telemetry-jq fail .*jq not found' "$FAKE_AIRLINE_LOG")" -eq 2 ]
 }
 
-@test "apply: never resolves a session locally" {
+@test "apply: resolves the calling pane session once per evaluation" {
   source "$SCRIPT"
   echo '{}' | ac_apply >/dev/null
-  ! grep -q "session_id" "$FAKE_TMUX_LOG"
+  [ "$(grep -c 'display-message -p -t %3 #{session_id}' "$FAKE_TMUX_LOG")" -eq 1 ]
+}
+
+@test "input failures are pane-qualified and another pane cannot clear them" {
+  source "$SCRIPT"
+  printf '{bad' | ac_apply >/dev/null 2>&1
+  TMUX_PANE=%9
+  printf '{bad' | ac_apply >/dev/null 2>&1
+  printf '{}' | ac_apply >/dev/null
+
+  grep -q 'problem set $7 agent-claude-telemetry-input-3 fail' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set $7 agent-claude-telemetry-input-9 fail' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem clear $7 agent-claude-telemetry-input-9' "$FAKE_AIRLINE_LOG"
+  ! grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
+}
+
+@test "multiple panes report jq under one shared key" {
+  source "$SCRIPT"
+  ac_have_jq() { return 1; }
+  printf '{}' | ac_apply >/dev/null 2>&1
+  TMUX_PANE=%9
+  printf '{}' | ac_apply >/dev/null 2>&1
+
+  [ "$(grep -c 'problem set $7 agent-claude-telemetry-jq fail' "$FAKE_AIRLINE_LOG")" -eq 2 ]
+  ! grep -qE 'agent-claude-telemetry-jq-[39]' "$FAKE_AIRLINE_LOG"
+}
+
+@test "an unresolved session prevents problem mutation but not passthrough" {
+  source "$SCRIPT"
+  export FAKE_TMUX_SESSION_FAIL=1
+  local json='{bad'
+
+  out=$(printf '%s' "$json" | ac_apply 2>"$TESTDIR/err")
+  [ "$out" = "$json" ]
+  grep -q 'cannot resolve a session for pane %3' "$TESTDIR/err"
+  ! grep -q '^problem ' "$FAKE_AIRLINE_LOG"
 }

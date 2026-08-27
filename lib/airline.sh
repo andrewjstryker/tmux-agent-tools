@@ -103,15 +103,12 @@ agent_airline_health_clear() { # <cli> <key> <pane>
   "$1" health clear "$2" -t "$3"
 }
 
-# These two functions preserve the current pane-originated 2.x command shape.
-# The explicit session-scoped 3.x contract replaces them in implementation
-# chunk 5.
-agent_airline_problem_set_from_pane() { # <cli> <key> <level> <message> <pane>
-  "$1" problem set "$2" "$3" "$4" -t "$5"
+agent_airline_problem_set() { # <cli> <session> <key> <level> <message>
+  "$1" problem set "$2" "$3" "$4" "$5"
 }
 
-agent_airline_problem_clear_from_pane() { # <cli> <key> <pane>
-  "$1" problem clear "$2" -t "$3"
+agent_airline_problem_clear() { # <cli> <session> <key>
+  "$1" problem clear "$2" "$3"
 }
 
 # vim: ft=bash

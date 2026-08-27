@@ -6,8 +6,8 @@
 # don't get them), so this is wired as one. It reads the statusLine JSON on
 # stdin, maps each meter to a condition, reports them on the calling pane's
 # window, and passes the JSON through unchanged so it can be piped into your real
-# status line. When the adapter cannot provide those signals it raises an airline
-# problem from the calling pane; airline projects it into every linked session.
+# status line. When the adapter cannot provide those signals it resolves the
+# calling pane to one session and raises a problem only in that session.
 #
 #   "statusLine": { "type": "command",
 #     "command": "$(tmux show -gqv @agent-cli) telemetry claude update | your-status-line" }
@@ -43,9 +43,13 @@ source "$AGENT_ROOT/lib/airline.sh"
 # the same window reduce independently through airline's health collection.
 AC_KEY_PREFIX="ctx"
 AC_USAGE_KEY_PREFIX="usage"
-AC_PROBLEM_KEY="agent-tools-claude-context"
+AC_PROBLEM_JQ_KEY="agent-claude-telemetry-jq"
+AC_PROBLEM_INPUT_PREFIX="agent-claude-telemetry-input"
+AC_PROBLEM_UPDATE_PREFIX="agent-claude-telemetry-update"
 
 ac_key() { printf '%s-%s' "$1" "${TMUX_PANE#%}"; }
+ac_problem_input_key() { ac_key "$AC_PROBLEM_INPUT_PREFIX"; }
+ac_problem_update_key() { ac_key "$AC_PROBLEM_UPDATE_PREFIX"; }
 
 ac_die() { printf 'claude-context: %s\n' "$*" >&2; return 1; }
 
@@ -107,45 +111,69 @@ ac_report() {   # <airline> <key> <token>
   fi
 }
 
-# Problems are session-scoped inside airline, but this adapter supplies only its
-# native origin: the calling pane. Airline owns resolving the window and
-# projecting the mutation to every session linking that window.
-ac_problem_raise() {   # <airline> <category> <message>
-  local airline="$1" category="$2" message="$3"
-  if agent_airline_problem_set_from_pane \
-    "$airline" "$AC_PROBLEM_KEY" warn "$message" "$TMUX_PANE"; then
+# Resolve the calling pane to one canonical session. A pane can be linked into
+# windows visible from multiple sessions; Agent intentionally chooses only the
+# one session tmux resolves for this target and never projects the problem.
+ac_problem_session() {
+  agent_tmux_current_session "$TMUX_PANE" 2>/dev/null || true
+}
+
+ac_problem_raise() {   # <airline> <session> <key> <category> <message>
+  local airline="$1" session="$2" key="$3" category="$4" message="$5"
+  if [ -z "$session" ]; then
+    ac_warn_once "$category" "$message"
+    ac_warn_once problem \
+      "unable to report Claude telemetry problem: cannot resolve a session for pane $TMUX_PANE"
+    return 0
+  fi
+  if agent_airline_problem_set \
+    "$airline" "$session" "$key" fail "$message"; then
     ac_warn_once "$category" "$message"
   else
-    ac_warn_once problem "unable to report Claude context problem through airline: $message"
+    ac_warn_once problem "unable to report Claude telemetry problem through airline: $message"
   fi
 }
 
-ac_problem_clear() {   # <airline>
-  if ! agent_airline_problem_clear_from_pane "$1" "$AC_PROBLEM_KEY" "$TMUX_PANE"; then
-    ac_warn_once problem "unable to clear Claude context problem through airline"
+ac_problem_clear_key() {   # <airline> <session> <key>
+  if [ -z "$2" ]; then
+    ac_warn_once problem \
+      "unable to clear Claude telemetry problem: cannot resolve a session for pane $TMUX_PANE"
+    return 0
   fi
+  if ! agent_airline_problem_clear "$1" "$2" "$3"; then
+    ac_warn_once problem "unable to clear Claude telemetry problem through airline"
+  fi
+}
+
+ac_problem_clear_pane_owned() { # <airline> <session>
+  ac_problem_clear_key "$1" "$2" "$(ac_problem_input_key)"
+  ac_problem_clear_key "$1" "$2" "$(ac_problem_update_key)"
 }
 
 # A degraded adapter must not leave its last successfully reported health values
 # stuck on screen. Clear this pane's meters, retain the input passthrough, record
-# the problem from this pane origin, and return success to Claude's statusLine runner.
-ac_degrade() {   # <airline> <category> <message>
-  local airline="$1" category="$2" message="$3"
+# the capability problem in one session, and return success to Claude's
+# statusLine runner.
+ac_degrade() {   # <airline> <session> <key> <category> <message>
+  local airline="$1" session="$2" key="$3" category="$4" message="$5"
   ac_report "$airline" "$(ac_key "$AC_KEY_PREFIX")" "" || true
   ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" "" || true
-  ac_problem_raise "$airline" "$category" "$message"
+  ac_problem_raise "$airline" "$session" "$key" "$category" "$message"
   return 0
 }
 
 # Clear only this pane's Claude health contributors. Lifecycle hooks use this at
 # session boundaries; unlike the statusLine mode it intentionally emits nothing.
 ac_clear() {
-  local airline
+  local airline session
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
   airline=$(agent_airline_resolve claude-context); [ -n "$airline" ] || return 0
+  session=$(ac_problem_session)
   ac_report "$airline" "$(ac_key "$AC_KEY_PREFIX")" "" || true
   ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" "" || true
-  ac_problem_clear "$airline"
+  # A pane boundary owns only pane-qualified failures. The shared jq problem is
+  # cleared by a successful evaluation, not by another pane ending.
+  ac_problem_clear_pane_owned "$airline" "$session"
 }
 
 # Read a warn/fail threshold pair from tmux options with defaults. Prints
@@ -158,24 +186,36 @@ ac_thresholds() {   # <prefix> <default-warn> <default-fail>
 }
 
 ac_apply() {
-  local json airline metrics context usage warn fail report_ok=1
+  local json airline session metrics context usage warn fail report_ok=1
   json=$(cat)
   printf '%s' "$json"        # passthrough first: the status line always renders
 
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
   airline=$(agent_airline_resolve claude-context); [ -n "$airline" ] || return 0
+  session=$(ac_problem_session)
   ac_have_jq || {
-    ac_degrade "$airline" jq "Claude context/usage health unavailable: jq not found"
+    ac_degrade "$airline" "$session" "$AC_PROBLEM_JQ_KEY" jq \
+      "Claude context/usage health unavailable: jq not found"
     return 0
   }
+  # Dependency recovery is independent from whether this pane's input is valid.
+  ac_problem_clear_key "$airline" "$session" "$AC_PROBLEM_JQ_KEY"
   if ! metrics=$(ac_extract_metrics "$json"); then
-    ac_degrade "$airline" json "Claude context/usage health unavailable: invalid statusLine JSON"
+    ac_degrade "$airline" "$session" "$(ac_problem_input_key)" json \
+      "Claude context/usage health unavailable for pane $TMUX_PANE: invalid statusLine JSON"
     return 0
   fi
   case "$metrics" in
     *$'\t'*) context="${metrics%%$'\t'*}"; usage="${metrics#*$'\t'}" ;;
-    *) ac_degrade "$airline" json "Claude context/usage health unavailable: invalid metrics payload"; return 0 ;;
+    *)
+      ac_degrade "$airline" "$session" "$(ac_problem_input_key)" json \
+        "Claude context/usage health unavailable for pane $TMUX_PANE: invalid metrics payload"
+      return 0
+      ;;
   esac
+  # This pane's input stream recovered even if an outbound health update below
+  # subsequently fails.
+  ac_problem_clear_key "$airline" "$session" "$(ac_problem_input_key)"
 
   # Context-window fill -> 'ctx' key.
   read -r warn fail <<<"$(ac_thresholds @agent-tools-context 80 90)"
@@ -185,12 +225,14 @@ ac_apply() {
   read -r warn fail <<<"$(ac_thresholds @agent-tools-usage 80 90)"
   ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" "$(ac_tier "$usage" "$warn" "$fail")" || report_ok=0
   if [ "$report_ok" -ne 1 ]; then
-    ac_degrade "$airline" airline "Claude context/usage health unavailable: airline health update failed"
+    ac_degrade "$airline" "$session" "$(ac_problem_update_key)" airline \
+      "Claude context/usage health unavailable for pane $TMUX_PANE: airline health update failed"
     return 0
   fi
-  # Report current capability every evaluation. The next airline release makes
-  # this clear idempotent and uses the pane origin to keep linked sessions in sync.
-  ac_problem_clear "$airline"
+  # Airline's keyed clears are idempotent, so report this final capability's
+  # recovery every evaluation. This pane cannot erase another pane's update
+  # diagnostic.
+  ac_problem_clear_key "$airline" "$session" "$(ac_problem_update_key)"
   # No refresh here: airline redraws only when the reduced condition changed, so a
   # statusLine that fires several times a second at a steady level costs one write
   # per key and zero redraws. Our own refresh would undo that gating.

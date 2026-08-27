@@ -30,6 +30,8 @@ teardown() {
   agent_tmux_pane_get %3 @agent-tools-turns >/dev/null
   agent_tmux_pane_set %3 @agent-tools-turns 5
   agent_tmux_pane_unset %3 @agent-tools-turns
+  export FAKE_TMUX_SESSION='$7'
+  session="$(agent_tmux_current_session %3)"
   agent_tmux_refresh_status
 
   grep -qx 'show -gqv @example' "$FAKE_TMUX_LOG"
@@ -37,6 +39,8 @@ teardown() {
   grep -qx 'show -pqv -t %3 @agent-tools-turns' "$FAKE_TMUX_LOG"
   grep -qx 'set -p -t %3 @agent-tools-turns 5' "$FAKE_TMUX_LOG"
   grep -qx 'set -pu -t %3 @agent-tools-turns' "$FAKE_TMUX_LOG"
+  [ "$session" = '$7' ]
+  grep -qx 'display-message -p -t %3 #{session_id}' "$FAKE_TMUX_LOG"
   grep -qx 'refresh-client -S' "$FAKE_TMUX_LOG"
 }
 
@@ -57,19 +61,28 @@ teardown() {
 
 @test "Airline fake records an exact argument vector and injects failures" {
   local cli="$FAKE_BIN/airline"
-  agent_airline_problem_set_from_pane \
-    "$cli" capability warn 'message with spaces' %3
+  agent_airline_problem_set \
+    "$cli" '$7' capability fail 'message with spaces'
 
   local -a argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
-  [ "${argv[0]}" = 7 ]
+  [ "${argv[0]}" = 6 ]
   [ "${argv[1]}" = problem ]
   [ "${argv[2]}" = set ]
-  [ "${argv[3]}" = capability ]
-  [ "${argv[4]}" = warn ]
-  [ "${argv[5]}" = 'message with spaces' ]
-  [ "${argv[6]}" = -t ]
-  [ "${argv[7]}" = %3 ]
+  [ "${argv[3]}" = '$7' ]
+  [ "${argv[4]}" = capability ]
+  [ "${argv[5]}" = fail ]
+  [ "${argv[6]}" = 'message with spaces' ]
+
+  : > "$FAKE_AIRLINE_ARGV_LOG"
+  agent_airline_problem_clear "$cli" '$7' capability
+  argv=()
+  mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
+  [ "${argv[0]}" = 4 ]
+  [ "${argv[1]}" = problem ]
+  [ "${argv[2]}" = clear ]
+  [ "${argv[3]}" = '$7' ]
+  [ "${argv[4]}" = capability ]
 
   export FAKE_AIRLINE_FAIL=health
   run agent_airline_health_set "$cli" context fail %3

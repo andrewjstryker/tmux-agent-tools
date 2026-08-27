@@ -117,13 +117,16 @@ is wired there rather than pretending its payload is a provider-neutral format.
 
 If this adapter cannot work as advertised—for example, jq is missing or Claude
 sends malformed JSON—it clears stale health, preserves the status-line pipeline,
-and raises `agent-tools-claude-context` as a problem from the calling pane.
-Problems are semantically session-scoped: airline owns the tmux topology and
-projects that pane origin into every session linking its window. The adapter
-does not choose a session or retain its own transition marker; it reports its
-current capability on each evaluation, and airline makes identical updates
-storage- and redraw-idempotent. Inspect retained diagnostics with
-`airline problem show`; the problem clears after recovery.
+and raises a `fail` problem. Agent resolves the calling pane to one canonical
+tmux session and reports only to that session; it does not project through
+windows linked elsewhere. Missing jq uses the shared key
+`agent-claude-telemetry-jq`. Input and health-update failures use pane-qualified
+keys so recovery in one pane cannot clear another pane's diagnostic. Messages
+are opaque to Airline and may include the originating pane for diagnosis. Agent
+reports current capability on each evaluation, relying on Airline's keyed
+idempotence rather than retaining a second transition marker. Inspect retained
+diagnostics with `airline problem show`; each key clears after its capability
+recovers.
 
 ## Turn counter → a widget you place
 
@@ -216,7 +219,7 @@ never hardcodes an installation directory:
 
 ```sh
 # Provider hooks
-"$(tmux show -gqv @agent-cli)" hook claude Notification
+"$(tmux show -gqv @agent-cli)" hook claude PermissionRequest
 "$(tmux show -gqv @agent-cli)" hook codex PermissionRequest
 
 # Provider-neutral commands
@@ -262,8 +265,12 @@ option you render yourself.)
 
 Merge [`examples/claude-settings.json`](examples/claude-settings.json) into
 `~/.claude/settings.json`. Every hook calls the published CLI with the native
-event name; the Claude adapter owns the mapping to lifecycle and turn
-operations. `SessionStart` and `SessionEnd` also clear Claude telemetry.
+event name. The Claude adapter maps `UserPromptSubmit` to working plus a turn,
+`PermissionRequest` to needs-input, `PostToolBatch` back to working, and `Stop`
+to done. It deliberately does not wire generic `Notification` or per-tool
+`PostToolUse`. `SessionStart` resets lifecycle, turns, and telemetry only for
+the `startup|clear` matcher, preserving state across resume and compaction;
+`SessionEnd` clears them.
 
 For **health** (context + usage), add the Claude adapter as your `statusLine`
 command. It reports each condition on airline's health channel and passes the
@@ -292,7 +299,8 @@ Install [`examples/codex-hooks.json`](examples/codex-hooks.json) as
 `~/.codex/hooks.json`, or merge its `hooks` object into an existing file. Every
 hook calls `@agent-cli`; the Codex adapter maps `PermissionRequest` to
 `needs-input` and the shared prompt/tool/stop/session events to the same
-operations as Claude.
+operations as Claude. Its `SessionStart` reset is likewise limited to the
+`startup|clear` matcher.
 
 Codex sends JSON on stdin; the adapter deliberately ignores it and emits no
 stdout. Use `/hooks` in Codex to review and trust the commands. Current Codex
