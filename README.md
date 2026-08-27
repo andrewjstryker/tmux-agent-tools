@@ -185,13 +185,13 @@ The `⟳` is just text in your format — swap it for any glyph you prefer.
 
 ## Requirements
 
-- **The next tmux-airline release after 2.0**, providing the `status`, semantic
-  `health` (`ok|warn|fail`), and pane-originated `problem` mutation contract.
-  Airline owns rendering, linked-session problem projection, transient clearing,
-  and `focus-events`; this plugin touches no private airline option. Do not
-  release this revision against airline 2.0: its problem target handling does
-  not yet provide the linked-session contract. The turn counter itself needs
-  only a status line that evaluates tmux formats.
+- **tmux-airline >= 3.0.0 and < 4.0.0**, providing the `status`, semantic
+  `health` (`ok|warn|fail`), and session-scoped `problem` mutation contract.
+  Agent checks the public `airline version` command before using these channels;
+  an absent, broken, malformed, or incompatible installation warns once and
+  otherwise no-ops. Airline owns rendering, transient clearing, and
+  `focus-events`; this plugin touches no private Airline option. The turn counter
+  itself needs only a status line that evaluates tmux formats.
 - `tmux` 3.0+. The `done` badge is `--transient`; airline enables `focus-events`
   itself the first time a transient signal is set, so its unfocus-clear works
   with no extra setup here.

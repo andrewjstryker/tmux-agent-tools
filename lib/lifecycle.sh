@@ -45,17 +45,6 @@ as_key() { printf '%s-%s' "$AS_KEY_PREFIX" "${TMUX_PANE#%}"; }
 
 as_die() { printf 'agent-state: %s\n' "$*" >&2; return 1; }
 
-# Warn — at most once per tmux server — that the airline CLI couldn't be resolved
-# (no @airline-cli, no $AIRLINE_BIN), then no-op. The status/health signals need
-# airline; without it there's nothing to drive. We *warn* (not fail) so a per-turn
-# hook isn't flagged on every call, and *not silently* so a real misconfiguration
-# is visible — but only once, via a global tmux flag (no state files), since this
-# runs per hook. Reached only from inside tmux (callers guard on $TMUX first), so
-# a user who never wired the airline-backed signals sees no message at all.
-as_warn_no_airline() {
-  agent_airline_warn_missing agent-state
-}
-
 # Map a state to "<level> [transient]". Empty level = clear the lane.
 # A trailing "1" means the signal is transient (airline clears it on unfocus).
 # Returns non-zero on an unknown state.
@@ -77,7 +66,7 @@ as_apply() {
   read -r level transient <<<"$mapped"
 
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
-  airline=$(agent_airline_resolve); [ -n "$airline" ] || { as_warn_no_airline; return 0; }
+  airline=$(agent_airline_resolve agent-state); [ -n "$airline" ] || return 0
   key=$(as_key)
 
   if [ -n "$level" ]; then

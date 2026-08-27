@@ -10,7 +10,7 @@
 # problem from the calling pane; airline projects it into every linked session.
 #
 #   "statusLine": { "type": "command",
-#     "command": "$(tmux show -gqv @agent-tools-claude-context-bin) | your-status-line" }
+#     "command": "$(tmux show -gqv @agent-cli) telemetry claude update | your-status-line" }
 #
 # The two meters:
 #   * context-window fill — context_window.used_percentage, under the 'ctx' key.
@@ -32,6 +32,13 @@
 # Layered like lifecycle.sh: the pure mapping (ac_tier) is split from the CLI
 # writes (ac_apply) so the bats suite can drive it without a tmux server.
 
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AGENT_ROOT="$(cd "$ADAPTER_DIR/../.." && pwd)"
+# shellcheck source=lib/tmux.sh
+source "$AGENT_ROOT/lib/tmux.sh"
+# shellcheck source=lib/airline.sh
+source "$AGENT_ROOT/lib/airline.sh"
+
 # Health contributors are pane-qualified so separate Claude sessions in panes of
 # the same window reduce independently through airline's health collection.
 AC_KEY_PREFIX="ctx"
@@ -42,16 +49,6 @@ ac_key() { printf '%s-%s' "$1" "${TMUX_PANE#%}"; }
 
 ac_die() { printf 'claude-context: %s\n' "$*" >&2; return 1; }
 
-# Resolve the airline CLI (the supported API) via @airline-cli — the absolute
-# path airline publishes at load. That option is the contract for "airline is
-# active": set means loaded, unset means it isn't (so there's nothing to drive,
-# and we no-op). $AIRLINE_BIN overrides it for tests / non-TPM installs. Prints
-# the path, or empty when airline isn't active.
-ac_airline() {
-  if [ -n "${AIRLINE_BIN:-}" ]; then printf '%s' "$AIRLINE_BIN"; return 0; fi
-  tmux show -gqv @airline-cli 2>/dev/null
-}
-
 # Warn — at most once per tmux server — about a missing dependency, then no-op.
 # The flag lives in a global tmux option (no state files) keyed by <name>, so the
 # 'airline' flag (@agent-tools-airline-warned) is shared with lifecycle.sh and
@@ -60,10 +57,7 @@ ac_airline() {
 # so warning every call would be noise. The JSON has already passed through on
 # stdout by the time we get here, so the status line never breaks — warn to stderr.
 ac_warn_once() {   # <name> <message>
-  local flag="@agent-tools-$1-warned"
-  [ "$(tmux show -gqv "$flag" 2>/dev/null)" = 1 ] && return 0
-  tmux set -g "$flag" 1 2>/dev/null
-  printf 'claude-context: %s\n' "$2" >&2
+  agent_airline_warn_once "$1" claude-context "$2"
 }
 
 # jq is a hard dependency for this adapter: Claude speaks JSON and jq is the tool
@@ -107,9 +101,9 @@ ac_extract_metrics() {
 # token is empty. Factored out so the two meters share the set-or-clear path.
 ac_report() {   # <airline> <key> <token>
   if [ -n "$3" ]; then
-    "$1" health set "$2" "$3" -t "$TMUX_PANE"
+    agent_airline_health_set "$1" "$2" "$3" "$TMUX_PANE"
   else
-    "$1" health clear "$2" -t "$TMUX_PANE"
+    agent_airline_health_clear "$1" "$2" "$TMUX_PANE"
   fi
 }
 
@@ -118,7 +112,8 @@ ac_report() {   # <airline> <key> <token>
 # projecting the mutation to every session linking that window.
 ac_problem_raise() {   # <airline> <category> <message>
   local airline="$1" category="$2" message="$3"
-  if "$airline" problem set "$AC_PROBLEM_KEY" warn "$message" -t "$TMUX_PANE"; then
+  if agent_airline_problem_set_from_pane \
+    "$airline" "$AC_PROBLEM_KEY" warn "$message" "$TMUX_PANE"; then
     ac_warn_once "$category" "$message"
   else
     ac_warn_once problem "unable to report Claude context problem through airline: $message"
@@ -126,7 +121,7 @@ ac_problem_raise() {   # <airline> <category> <message>
 }
 
 ac_problem_clear() {   # <airline>
-  if ! "$1" problem clear "$AC_PROBLEM_KEY" -t "$TMUX_PANE"; then
+  if ! agent_airline_problem_clear_from_pane "$1" "$AC_PROBLEM_KEY" "$TMUX_PANE"; then
     ac_warn_once problem "unable to clear Claude context problem through airline"
   fi
 }
@@ -147,10 +142,7 @@ ac_degrade() {   # <airline> <category> <message>
 ac_clear() {
   local airline
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
-  airline=$(ac_airline); [ -n "$airline" ] || {
-    ac_warn_once airline "airline CLI not found — set @airline-cli (load tmux-airline first) or the AIRLINE_BIN env var; status/health signals disabled"
-    return 0
-  }
+  airline=$(agent_airline_resolve claude-context); [ -n "$airline" ] || return 0
   ac_report "$airline" "$(ac_key "$AC_KEY_PREFIX")" "" || true
   ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" "" || true
   ac_problem_clear "$airline"
@@ -160,8 +152,8 @@ ac_clear() {
 # "<warn> <fail>". <prefix> is the option base, e.g. @agent-tools-context.
 ac_thresholds() {   # <prefix> <default-warn> <default-fail>
   local warn fail
-  warn=$(tmux show -gqv "$1-warn"); [ -n "$warn" ] || warn=$2
-  fail=$(tmux show -gqv "$1-fail"); [ -n "$fail" ] || fail=$3
+  warn=$(agent_tmux_global_get "$1-warn"); [ -n "$warn" ] || warn=$2
+  fail=$(agent_tmux_global_get "$1-fail"); [ -n "$fail" ] || fail=$3
   printf '%s %s' "$warn" "$fail"
 }
 
@@ -171,10 +163,7 @@ ac_apply() {
   printf '%s' "$json"        # passthrough first: the status line always renders
 
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
-  airline=$(ac_airline); [ -n "$airline" ] || {
-    ac_warn_once airline "airline CLI not found — set @airline-cli (load tmux-airline first) or the AIRLINE_BIN env var; status/health signals disabled"
-    return 0
-  }
+  airline=$(agent_airline_resolve claude-context); [ -n "$airline" ] || return 0
   ac_have_jq || {
     ac_degrade "$airline" jq "Claude context/usage health unavailable: jq not found"
     return 0

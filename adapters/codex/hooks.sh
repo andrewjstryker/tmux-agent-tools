@@ -4,8 +4,8 @@
 ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$ADAPTER_DIR/../.." && pwd)"
 
-CX_STATE_BIN="${AGENT_STATE_BIN:-$PROJECT_DIR/operations/lifecycle.sh}"
-CX_TURNS_BIN="${AGENT_TURNS_BIN:-$PROJECT_DIR/operations/turns.sh}"
+CX_STATE_BIN="${AGENT_STATE_BIN:-$PROJECT_DIR/lib/lifecycle.sh}"
+CX_TURNS_BIN="${AGENT_TURNS_BIN:-$PROJECT_DIR/lib/turns.sh}"
 
 cx_die() { printf 'codex-hooks: %s\n' "$*" >&2; return 1; }
 

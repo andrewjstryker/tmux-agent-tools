@@ -42,14 +42,14 @@ teardown() {
 
 @test "Airline discovery honors the override and documented bootstrap option" {
   export AIRLINE_BIN="$FAKE_BIN/airline"
-  run agent_airline_resolve
+  run agent_airline_discover
   [ "$status" -eq 0 ]
   [ "$output" = "$FAKE_BIN/airline" ]
   [ ! -s "$FAKE_TMUX_LOG" ]
 
   unset AIRLINE_BIN
   export FAKE_AIRLINE_CLI=/configured/airline
-  run agent_airline_resolve
+  run agent_airline_discover
   [ "$status" -eq 0 ]
   [ "$output" = /configured/airline ]
   grep -qx 'show -gqv @airline-cli' "$FAKE_TMUX_LOG"

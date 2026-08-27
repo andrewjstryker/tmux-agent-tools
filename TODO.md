@@ -33,13 +33,13 @@ tmux-airline release work is outside this repository's scope.
 - [x] Remove all `@agent-tools-*-bin` handles without aliases or fallback reads.
 - [x] Update checked-in provider configurations to invoke `@agent-cli`.
 
-## 4. Airline 3.x compatibility
+## 4. Airline 3.x compatibility — completed
 
-- Require the public `airline version` contract to be `>= 3.0.0` and `< 4.0.0`
+- [x] Require the public `airline version` contract to be `>= 3.0.0` and `< 4.0.0`
   before an Airline-backed mutation.
-- Warn once per tmux server and otherwise no-op for a missing executable, a
+- [x] Warn once per tmux server and otherwise no-op for a missing executable, a
   failed or malformed version response, and an incompatible version.
-- Test accepted 3.x versions, rejected 2.x and 4.x versions, malformed output,
+- [x] Test accepted 3.x versions, rejected 2.x and 4.x versions, malformed output,
   command failure, warning suppression, and absence of mutations after rejection.
 
 ## 5. Signal and problem semantics

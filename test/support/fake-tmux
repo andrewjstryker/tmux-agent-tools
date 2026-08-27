@@ -19,7 +19,12 @@ if [[ ("${1:-}" == show || "${1:-}" == show-options) && "${2:-}" == -gqv ]]; the
     @agent-tools-context-fail) printf '%s' "${FAKE_FAIL:-}"; exit 0 ;;
     @agent-tools-usage-warn) printf '%s' "${FAKE_USAGE_WARN:-}"; exit 0 ;;
     @agent-tools-usage-fail) printf '%s' "${FAKE_USAGE_FAIL:-}"; exit 0 ;;
-    @agent-tools-airline-warned) printf '%s' "${FAKE_WARNED:-}"; exit 0 ;;
+    @agent-tools-airline-warned)
+      if [[ -n "${FAKE_WARNED+x}" ]]; then
+        printf '%s' "$FAKE_WARNED"
+        exit 0
+      fi
+      ;;
     @airline-cli) printf '%s' "${FAKE_AIRLINE_CLI:-}"; exit 0 ;;
     @agent-cli) printf '%s' "${FAKE_AGENT_CLI:-}"; exit 0 ;;
   esac

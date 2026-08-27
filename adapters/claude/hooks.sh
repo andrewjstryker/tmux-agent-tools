@@ -4,8 +4,8 @@
 ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$ADAPTER_DIR/../.." && pwd)"
 
-CH_STATE_BIN="${AGENT_STATE_BIN:-$PROJECT_DIR/operations/lifecycle.sh}"
-CH_TURNS_BIN="${AGENT_TURNS_BIN:-$PROJECT_DIR/operations/turns.sh}"
+CH_STATE_BIN="${AGENT_STATE_BIN:-$PROJECT_DIR/lib/lifecycle.sh}"
+CH_TURNS_BIN="${AGENT_TURNS_BIN:-$PROJECT_DIR/lib/turns.sh}"
 CH_CONTEXT_BIN="${CLAUDE_CONTEXT_BIN:-$ADAPTER_DIR/context.sh}"
 
 ch_die() { printf 'claude-hooks: %s\n' "$*" >&2; return 1; }
