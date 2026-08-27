@@ -1,0 +1,26 @@
+{
+  "description": "Surface Codex lifecycle state in tmux-airline.",
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "startup|clear",
+      "hooks": [
+        { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" SessionStart; fi" }
+      ]
+    }],
+    "UserPromptSubmit": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" UserPromptSubmit; fi" }
+    ] }],
+    "PermissionRequest": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" PermissionRequest; fi" }
+    ] }],
+    "PostToolUse": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" PostToolUse; fi" }
+    ] }],
+    "Stop": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" Stop; fi" }
+    ] }],
+    "SessionEnd": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" SessionEnd; fi" }
+    ] }]
+  }
+}

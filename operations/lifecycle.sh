@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-state.sh — reflect an agent's lifecycle state in the tmux window list,
+# lifecycle.sh — apply a provider-neutral agent lifecycle operation.
 # using tmux-airline's left status-lane channel (the `airline status` CLI).
 #
 # Lifecycle is an *event* signal (a discrete state worth a glance), so it uses a
@@ -11,8 +11,8 @@
 # calling pane's status contributor on its window ($TMUX_PANE), so the
 # window list shows a small badge (a glyph before the name) marking which agent is
 # working / waiting / finished. The agent speaks its own vocabulary; this script
-# owns the state -> level mapping. It is agent-agnostic — any agent's hooks can
-# call it; Claude Code is the worked example in the README.
+# owns the state -> level mapping. It is agent-agnostic; Claude and Codex
+# adapters both call it.
 #
 # airline's status channel has three fixed levels, each with its own glyph and
 # color (the plugin no longer picks palette tokens — airline owns that mapping):
@@ -24,7 +24,7 @@
 #   needs-input -> attention  (◆ amber — wants your input)
 #   idle | clear-> (clear)    (back to normal)
 #
-# Usage: agent-state.sh <state>
+# Usage: lifecycle.sh <state>
 #
 # Layer 1: standalone. The pure mapping (as_map) is split from the CLI writes
 # (as_apply) so the bats suite can drive it without a tmux server.
@@ -105,7 +105,7 @@ as_apply() {
 
 as_main() {
   set -euo pipefail
-  [ $# -eq 1 ] || as_die "usage: agent-state.sh <working|needs-input|done|idle|clear>"
+  [ $# -eq 1 ] || as_die "usage: lifecycle.sh <working|needs-input|done|idle|clear>"
   as_apply "$1"
 }
 

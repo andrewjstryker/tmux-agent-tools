@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# context.sh — adapt Claude Code statusLine resource data to
+# tmux-airline's health channel (the `airline health` CLI).
+#
+# Two meters, both exposed only to a Claude Code *statusLine* command (hooks
+# don't get them), so this is wired as one. It reads the statusLine JSON on
+# stdin, maps each meter to a condition, reports them on the calling pane's
+# window, and passes the JSON through unchanged so it can be piped into your real
+# status line. When the adapter cannot provide those signals it raises an airline
+# problem from the calling pane; airline projects it into every linked session.
+#
+#   "statusLine": { "type": "command",
+#     "command": "$(tmux show -gqv @agent-tools-claude-context-bin) | your-status-line" }
+#
+# The two meters:
+#   * context-window fill — context_window.used_percentage, under the 'ctx' key.
+#   * usage-limit         — the worse of rate_limits.{five_hour,seven_day}
+#                           .used_percentage (Claude.ai Pro/Max only; each window
+#                           may be absent), under the 'usage' key.
+#
+# Both are *meters* (sustained conditions), so they use the right health gutter —
+# distinct from the lifecycle *status lane* (badge) that lifecycle.sh drives.
+# All three coexist on a window. airline reduces all health contributors to the
+# worst condition, so a busy window shows one gutter glyph at the max. Thresholds
+# are percent and overridable via tmux options (each meter has its own pair):
+#   @agent-tools-context-warn (default 80) -> warn (amber gutter glyph)
+#   @agent-tools-context-fail (default 90) -> fail (red gutter glyph)
+#   @agent-tools-usage-warn   (default 80) -> warn
+#   @agent-tools-usage-fail   (default 90) -> fail
+# Below the warn threshold the contribution is cleared.
+#
+# Layered like lifecycle.sh: the pure mapping (ac_tier) is split from the CLI
+# writes (ac_apply) so the bats suite can drive it without a tmux server.
+
+# Health contributors are pane-qualified so separate Claude sessions in panes of
+# the same window reduce independently through airline's health collection.
+AC_KEY_PREFIX="ctx"
+AC_USAGE_KEY_PREFIX="usage"
+AC_PROBLEM_KEY="agent-tools-claude-context"
+
+ac_key() { printf '%s-%s' "$1" "${TMUX_PANE#%}"; }
+
+ac_die() { printf 'claude-context: %s\n' "$*" >&2; return 1; }
+
+# Resolve the airline CLI (the supported API) via @airline-cli — the absolute
+# path airline publishes at load. That option is the contract for "airline is
+# active": set means loaded, unset means it isn't (so there's nothing to drive,
+# and we no-op). $AIRLINE_BIN overrides it for tests / non-TPM installs. Prints
+# the path, or empty when airline isn't active.
+ac_airline() {
+  if [ -n "${AIRLINE_BIN:-}" ]; then printf '%s' "$AIRLINE_BIN"; return 0; fi
+  tmux show -gqv @airline-cli 2>/dev/null
+}
+
+# Warn — at most once per tmux server — about a missing dependency, then no-op.
+# The flag lives in a global tmux option (no state files) keyed by <name>, so the
+# 'airline' flag (@agent-tools-airline-warned) is shared with lifecycle.sh and
+# the user sees one airline message regardless of which signal fired first.
+# Critically rate-limited: this runs per statusLine render (a few times a second),
+# so warning every call would be noise. The JSON has already passed through on
+# stdout by the time we get here, so the status line never breaks — warn to stderr.
+ac_warn_once() {   # <name> <message>
+  local flag="@agent-tools-$1-warned"
+  [ "$(tmux show -gqv "$flag" 2>/dev/null)" = 1 ] && return 0
+  tmux set -g "$flag" 1 2>/dev/null
+  printf 'claude-context: %s\n' "$2" >&2
+}
+
+# jq is a hard dependency for this adapter: Claude speaks JSON and jq is the tool
+# for JSON — no brittle hand-rolled parse. A seam for the one presence
+# check. The statusLine JSON now carries sibling used_percentage keys (rate_limits),
+# so a precise jq path is the only correct reader, not a first-match grep.
+ac_have_jq() { command -v jq >/dev/null 2>&1; }
+
+# Map a used-percentage to a health condition, given the two thresholds. Empty
+# = clear. Pure: thresholds are passed in, not read from tmux.
+ac_tier() {
+  local pct="$1" warn="$2" fail="$3"
+  case "$pct" in ''|*[!0-9]*) echo ""; return 0 ;; esac   # non-numeric -> clear
+  if   [ "$pct" -ge "$fail" ]; then echo "fail"
+  elif [ "$pct" -ge "$warn" ]; then echo "warn"
+  else                              echo ""
+  fi
+}
+
+# Parse and extract both meters in one jq process. Output is
+# "<context><TAB><usage>"; either field may be empty. Invalid JSON is distinct
+# from an absent field because jq's nonzero exit status is preserved.
+ac_extract_metrics() {
+  printf '%s' "$1" | jq -r '
+    def integer_part:
+      if . == null then "" else tostring | split(".")[0] end;
+    [
+      (.context_window.used_percentage | integer_part),
+      ([.rate_limits.five_hour.used_percentage,
+        .rate_limits.seven_day.used_percentage]
+       | map(select(. != null)) | max | integer_part)
+    ] | @tsv' 2>/dev/null
+}
+
+# Read the statusLine JSON from stdin, report each resource condition on health
+# by tier, and pass the JSON through unchanged (so it composes with a
+# real status line). The passthrough happens first, so the status line never
+# breaks; outside tmux it's a silent no-op. Missing airline warns locally; other
+# degradation is retained through airline's problem API.
+# Report one health key: set it to a condition token, or clear it when the
+# token is empty. Factored out so the two meters share the set-or-clear path.
+ac_report() {   # <airline> <key> <token>
+  if [ -n "$3" ]; then
+    "$1" health set "$2" "$3" -t "$TMUX_PANE"
+  else
+    "$1" health clear "$2" -t "$TMUX_PANE"
+  fi
+}
+
+# Problems are session-scoped inside airline, but this adapter supplies only its
+# native origin: the calling pane. Airline owns resolving the window and
+# projecting the mutation to every session linking that window.
+ac_problem_raise() {   # <airline> <category> <message>
+  local airline="$1" category="$2" message="$3"
+  if "$airline" problem set "$AC_PROBLEM_KEY" warn "$message" -t "$TMUX_PANE"; then
+    ac_warn_once "$category" "$message"
+  else
+    ac_warn_once problem "unable to report Claude context problem through airline: $message"
+  fi
+}
+
+ac_problem_clear() {   # <airline>
+  if ! "$1" problem clear "$AC_PROBLEM_KEY" -t "$TMUX_PANE"; then
+    ac_warn_once problem "unable to clear Claude context problem through airline"
+  fi
+}
+
+# A degraded adapter must not leave its last successfully reported health values
+# stuck on screen. Clear this pane's meters, retain the input passthrough, record
+# the problem from this pane origin, and return success to Claude's statusLine runner.
+ac_degrade() {   # <airline> <category> <message>
+  local airline="$1" category="$2" message="$3"
+  ac_report "$airline" "$(ac_key "$AC_KEY_PREFIX")" "" || true
+  ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" "" || true
+  ac_problem_raise "$airline" "$category" "$message"
+  return 0
+}
+
+# Clear only this pane's Claude health contributors. Lifecycle hooks use this at
+# session boundaries; unlike the statusLine mode it intentionally emits nothing.
+ac_clear() {
+  local airline
+  [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
+  airline=$(ac_airline); [ -n "$airline" ] || {
+    ac_warn_once airline "airline CLI not found — set @airline-cli (load tmux-airline first) or the AIRLINE_BIN env var; status/health signals disabled"
+    return 0
+  }
+  ac_report "$airline" "$(ac_key "$AC_KEY_PREFIX")" "" || true
+  ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" "" || true
+  ac_problem_clear "$airline"
+}
+
+# Read a warn/fail threshold pair from tmux options with defaults. Prints
+# "<warn> <fail>". <prefix> is the option base, e.g. @agent-tools-context.
+ac_thresholds() {   # <prefix> <default-warn> <default-fail>
+  local warn fail
+  warn=$(tmux show -gqv "$1-warn"); [ -n "$warn" ] || warn=$2
+  fail=$(tmux show -gqv "$1-fail"); [ -n "$fail" ] || fail=$3
+  printf '%s %s' "$warn" "$fail"
+}
+
+ac_apply() {
+  local json airline metrics context usage warn fail report_ok=1
+  json=$(cat)
+  printf '%s' "$json"        # passthrough first: the status line always renders
+
+  [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
+  airline=$(ac_airline); [ -n "$airline" ] || {
+    ac_warn_once airline "airline CLI not found — set @airline-cli (load tmux-airline first) or the AIRLINE_BIN env var; status/health signals disabled"
+    return 0
+  }
+  ac_have_jq || {
+    ac_degrade "$airline" jq "Claude context/usage health unavailable: jq not found"
+    return 0
+  }
+  if ! metrics=$(ac_extract_metrics "$json"); then
+    ac_degrade "$airline" json "Claude context/usage health unavailable: invalid statusLine JSON"
+    return 0
+  fi
+  case "$metrics" in
+    *$'\t'*) context="${metrics%%$'\t'*}"; usage="${metrics#*$'\t'}" ;;
+    *) ac_degrade "$airline" json "Claude context/usage health unavailable: invalid metrics payload"; return 0 ;;
+  esac
+
+  # Context-window fill -> 'ctx' key.
+  read -r warn fail <<<"$(ac_thresholds @agent-tools-context 80 90)"
+  ac_report "$airline" "$(ac_key "$AC_KEY_PREFIX")" "$(ac_tier "$context" "$warn" "$fail")" || report_ok=0
+
+  # Usage limit (worse of the two rate-limit windows) -> 'usage' key.
+  read -r warn fail <<<"$(ac_thresholds @agent-tools-usage 80 90)"
+  ac_report "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" "$(ac_tier "$usage" "$warn" "$fail")" || report_ok=0
+  if [ "$report_ok" -ne 1 ]; then
+    ac_degrade "$airline" airline "Claude context/usage health unavailable: airline health update failed"
+    return 0
+  fi
+  # Report current capability every evaluation. The next airline release makes
+  # this clear idempotent and uses the pane origin to keep linked sessions in sync.
+  ac_problem_clear "$airline"
+  # No refresh here: airline redraws only when the reduced condition changed, so a
+  # statusLine that fires several times a second at a steady level costs one write
+  # per key and zero redraws. Our own refresh would undo that gating.
+}
+
+ac_main() {
+  set -euo pipefail
+  case "${1:-update}" in
+    update) [ $# -le 1 ] || ac_die "usage: context.sh [update|clear]"; ac_apply ;;
+    clear)  [ $# -eq 1 ] || ac_die "usage: context.sh [update|clear]"; ac_clear ;;
+    *)      ac_die "usage: context.sh [update|clear]" ;;
+  esac
+}
+
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  ac_main "$@"
+fi

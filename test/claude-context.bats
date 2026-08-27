@@ -1,36 +1,41 @@
 #!/usr/bin/env bats
-# Tests for integrations/claude-context.sh.
+# Tests for adapters/claude/context.sh.
 #
-# ac_tier, ac_extract_pct and ac_extract_usage are pure. ac_apply drives the
+# ac_tier and ac_extract_metrics are pure. ac_apply drives the
 # airline CLI; its calls are checked against a fake `airline` on PATH (pointed at
 # via $AIRLINE_BIN) that logs its arguments. A fake `tmux` answers `show`
 # (threshold options) and absorbs refresh-client. $TMUX/$TMUX_PANE are set so
 # ac_apply proceeds (unset in the no-op test).
 
 setup() {
-  SCRIPT="${BATS_TEST_DIRNAME}/../integrations/claude-context.sh"
+  SCRIPT="${BATS_TEST_DIRNAME}/../adapters/claude/context.sh"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/agctx.XXXXXX")"
   FAKE_BIN="${TESTDIR}/bin"
   mkdir -p "$FAKE_BIN"
   export FAKE_TMUX_LOG="${TESTDIR}/tmux.log"
   export FAKE_AIRLINE_LOG="${TESTDIR}/airline.log"
-  export FAKE_ALERT=80 FAKE_STRESS=90                # context thresholds the fake `tmux show` returns
-  export FAKE_USAGE_ALERT=80 FAKE_USAGE_STRESS=90    # usage-limit thresholds
+  export FAKE_WARN=80 FAKE_FAIL=90                # context thresholds the fake `tmux show` returns
+  export FAKE_USAGE_WARN=80 FAKE_USAGE_FAIL=90    # usage-limit thresholds
   : > "$FAKE_TMUX_LOG"; : > "$FAKE_AIRLINE_LOG"
   cat > "${FAKE_BIN}/tmux" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
 case "$*" in
-  *@agent-tools-context-alert*)  printf '%s' "${FAKE_ALERT}" ;;
-  *@agent-tools-context-stress*) printf '%s' "${FAKE_STRESS}" ;;
-  *@agent-tools-usage-alert*)    printf '%s' "${FAKE_USAGE_ALERT}" ;;
-  *@agent-tools-usage-stress*)   printf '%s' "${FAKE_USAGE_STRESS}" ;;
+  *@agent-tools-context-warn*)  printf '%s' "${FAKE_WARN}" ;;
+  *@agent-tools-context-fail*)  printf '%s' "${FAKE_FAIL}" ;;
+  *@agent-tools-usage-warn*)    printf '%s' "${FAKE_USAGE_WARN}" ;;
+  *@agent-tools-usage-fail*)    printf '%s' "${FAKE_USAGE_FAIL}" ;;
   *@agent-tools-airline-warned*) printf '%s' "${FAKE_WARNED:-}" ;;
 esac
 SH
   cat > "${FAKE_BIN}/airline" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FAKE_AIRLINE_LOG"
+if [ "${1:-}" = health ] && [ "${2:-}" = set ]; then
+  case "${4:-}" in ok|warn|fail) ;; *) exit 64 ;; esac
+fi
+if [ "${FAKE_HEALTH_FAIL:-}" = 1 ] && [ "${1:-}" = health ]; then exit 65; fi
+if [ "${1:-}" = problem ] && [ "${2:-}" = set ] && [ "${4:-}" != warn ]; then exit 66; fi
 SH
   chmod +x "${FAKE_BIN}/tmux" "${FAKE_BIN}/airline"
   PATH="${FAKE_BIN}:${PATH}"
@@ -45,84 +50,82 @@ teardown() {
 
 # --- pure tier mapping ---
 
-@test "tier: below alert clears" {
+@test "tier: below warn clears" {
   source "$SCRIPT"; run ac_tier 50 80 90; [ -z "$output" ]
 }
 
-@test "tier: at the alert threshold is alert" {
-  source "$SCRIPT"; run ac_tier 80 80 90; [ "$output" = "alert" ]
+@test "tier: at the warn threshold is warn" {
+  source "$SCRIPT"; run ac_tier 80 80 90; [ "$output" = "warn" ]
 }
 
-@test "tier: between thresholds is alert" {
-  source "$SCRIPT"; run ac_tier 85 80 90; [ "$output" = "alert" ]
+@test "tier: between thresholds is warn" {
+  source "$SCRIPT"; run ac_tier 85 80 90; [ "$output" = "warn" ]
 }
 
-@test "tier: at the stress threshold is stress" {
-  source "$SCRIPT"; run ac_tier 90 80 90; [ "$output" = "stress" ]
+@test "tier: at the fail threshold is fail" {
+  source "$SCRIPT"; run ac_tier 90 80 90; [ "$output" = "fail" ]
 }
 
-@test "tier: above the stress threshold is stress" {
-  source "$SCRIPT"; run ac_tier 99 80 90; [ "$output" = "stress" ]
+@test "tier: above the fail threshold is fail" {
+  source "$SCRIPT"; run ac_tier 99 80 90; [ "$output" = "fail" ]
 }
 
 @test "tier: non-numeric clears" {
   source "$SCRIPT"; run ac_tier "" 80 90; [ -z "$output" ]
 }
 
-# --- percentage extraction ---
+# --- metric extraction ---
 
-@test "extract: pulls the integer used_percentage from JSON" {
+@test "extract: returns context and worst usage in one tuple" {
   source "$SCRIPT"
-  run ac_extract_pct '{"context_window":{"used_percentage":87.4},"model":{}}'
-  [ "$output" = "87" ]
+  run ac_extract_metrics '{"context_window":{"used_percentage":87.4},"rate_limits":{"five_hour":{"used_percentage":23.5},"seven_day":{"used_percentage":41.2}}}'
+  [ "$output" = $'87\t41' ]
 }
 
-@test "extract: missing field yields empty" {
+@test "extract: missing fields produce an empty tuple" {
   source "$SCRIPT"
-  run ac_extract_pct '{"model":{"display_name":"x"}}'
-  [ -z "$output" ]
+  run ac_extract_metrics '{"model":{"display_name":"x"}}'
+  [ "$output" = $'\t' ]
 }
 
 @test "extract: not fooled by sibling used_percentage keys (rate_limits)" {
   source "$SCRIPT"
   # rate_limits.*.used_percentage are siblings in the real schema; the jq path is
   # scoped to context_window, so it must return 8 — not 23 or 41.
-  run ac_extract_pct '{"context_window":{"used_percentage":8},"rate_limits":{"five_hour":{"used_percentage":23.5},"seven_day":{"used_percentage":41.2}}}'
-  [ "$output" = "8" ]
-}
-
-# --- usage-limit extraction (worse of the two rate-limit windows) ---
-
-@test "usage: takes the worse of the two windows (integer)" {
-  source "$SCRIPT"
-  run ac_extract_usage '{"rate_limits":{"five_hour":{"used_percentage":23.5},"seven_day":{"used_percentage":41.2}}}'
-  [ "$output" = "41" ]
+  run ac_extract_metrics '{"context_window":{"used_percentage":8},"rate_limits":{"five_hour":{"used_percentage":23.5},"seven_day":{"used_percentage":41.2}}}'
+  [ "$output" = $'8\t41' ]
 }
 
 @test "usage: one window absent uses the other" {
   source "$SCRIPT"
-  run ac_extract_usage '{"rate_limits":{"five_hour":{"used_percentage":67}}}'
-  [ "$output" = "67" ]
+  run ac_extract_metrics '{"rate_limits":{"five_hour":{"used_percentage":67}}}'
+  [ "$output" = $'\t67' ]
 }
 
 @test "usage: no rate_limits (non-subscriber) yields empty" {
   source "$SCRIPT"
-  run ac_extract_usage '{"context_window":{"used_percentage":50}}'
-  [ -z "$output" ]
+  run ac_extract_metrics '{"context_window":{"used_percentage":50}}'
+  [ "$output" = $'50\t' ]
+}
+
+@test "extract: malformed JSON fails" {
+  source "$SCRIPT"
+  run ac_extract_metrics '{bad json'
+  [ "$status" -ne 0 ]
 }
 
 # --- applying via the airline CLI ---
 
-@test "apply: high usage reports stress health" {
+@test "apply: high usage reports fail health" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":95}}' | ac_apply >/dev/null
-  grep -q "health set ctx-3 stress -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set ctx-3 fail -t %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: mid usage reports alert health" {
+@test "apply: mid usage reports warn health" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":83}}' | ac_apply >/dev/null
-  grep -q "health set ctx-3 alert -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set ctx-3 warn -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: low usage clears the health key" {
@@ -133,21 +136,21 @@ teardown() {
 
 @test "apply: thresholds are overridable via tmux options" {
   source "$SCRIPT"
-  FAKE_ALERT=50 FAKE_STRESS=70
+  FAKE_WARN=50 FAKE_FAIL=70
   echo '{"context_window":{"used_percentage":55}}' | ac_apply >/dev/null
-  grep -q "health set ctx-3 alert -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set ctx-3 warn -t %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: high rate-limit reports stress on the usage key" {
+@test "apply: high rate-limit reports fail on the usage key" {
   source "$SCRIPT"
   echo '{"rate_limits":{"seven_day":{"used_percentage":95}}}' | ac_apply >/dev/null
-  grep -q "health set usage-3 stress -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set usage-3 fail -t %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: mid rate-limit reports alert on the usage key" {
+@test "apply: mid rate-limit reports warn on the usage key" {
   source "$SCRIPT"
   echo '{"rate_limits":{"five_hour":{"used_percentage":83}}}' | ac_apply >/dev/null
-  grep -q "health set usage-3 alert -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set usage-3 warn -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: no rate_limits clears the usage key" {
@@ -158,10 +161,10 @@ teardown() {
 
 @test "apply: usage thresholds are independently overridable" {
   source "$SCRIPT"
-  FAKE_USAGE_ALERT=50 FAKE_USAGE_STRESS=70   # context stays 80/90
+  FAKE_USAGE_WARN=50 FAKE_USAGE_FAIL=70   # context stays 80/90
   echo '{"context_window":{"used_percentage":55},"rate_limits":{"five_hour":{"used_percentage":55}}}' | ac_apply >/dev/null
-  grep -q "health set usage-3 alert -t %3" "$FAKE_AIRLINE_LOG" # 55 >= usage alert 50
-  grep -q "health clear ctx-3 -t %3"       "$FAKE_AIRLINE_LOG" # 55 < context alert 80
+  grep -q "health set usage-3 warn -t %3" "$FAKE_AIRLINE_LOG" # 55 >= usage warn 50
+  grep -q "health clear ctx-3 -t %3"       "$FAKE_AIRLINE_LOG" # 55 < context warn 80
 }
 
 @test "keys: health contributors are qualified by the calling pane" {
@@ -176,6 +179,7 @@ teardown() {
   ac_clear
   grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
   grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "problem clear agent-tools-claude-context -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "main: clear emits no statusLine output" {
@@ -233,7 +237,7 @@ teardown() {
   [ ! -s "${TESTDIR}/err" ]                        # silent the second time
 }
 
-@test "apply: missing jq passes JSON through and warns once (no health write)" {
+@test "apply: missing jq passes JSON through, clears stale health, and raises a pane-originated problem" {
   source "$SCRIPT"
   ac_have_jq() { return 1; }                        # simulate jq absent via the seam
   local json='{"context_window":{"used_percentage":95}}'
@@ -241,5 +245,46 @@ teardown() {
   out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
   [ "$out" = "$json" ]                              # status line never breaks
   grep -q "jq not found" "${TESTDIR}/err"           # the missing dep is visible
-  [ ! -s "$FAKE_AIRLINE_LOG" ]                       # and no health write attempted
+  grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "problem set agent-tools-claude-context warn .*jq not found.*-t %3" "$FAKE_AIRLINE_LOG"
+}
+
+@test "apply: malformed JSON degrades without breaking passthrough" {
+  source "$SCRIPT"
+  local json='{bad json'
+  out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
+  [ "$out" = "$json" ]
+  grep -q "invalid statusLine JSON" "${TESTDIR}/err"
+  grep -q "problem set agent-tools-claude-context warn .*invalid statusLine JSON.*-t %3" "$FAKE_AIRLINE_LOG"
+}
+
+@test "apply: airline health failure becomes a graceful adapter problem" {
+  source "$SCRIPT"
+  export FAKE_HEALTH_FAIL=1
+  local json='{"context_window":{"used_percentage":40}}'
+  out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
+  [ "$out" = "$json" ]
+  grep -q "airline health update failed" "${TESTDIR}/err"
+  grep -q "problem set agent-tools-claude-context warn .*airline health update failed.*-t %3" "$FAKE_AIRLINE_LOG"
+}
+
+@test "apply: successful evaluation reports recovery from the pane origin" {
+  source "$SCRIPT"
+  echo '{"context_window":{"used_percentage":40}}' | ac_apply >/dev/null
+  grep -q "problem clear agent-tools-claude-context -t %3" "$FAKE_AIRLINE_LOG"
+}
+
+@test "apply: degradation re-reports current capability for linked-session convergence" {
+  source "$SCRIPT"
+  ac_have_jq() { return 1; }
+  echo '{}' | ac_apply >/dev/null
+  echo '{}' | ac_apply >/dev/null
+  [ "$(grep -c "problem set agent-tools-claude-context warn .*jq not found.*-t %3" "$FAKE_AIRLINE_LOG")" -eq 2 ]
+}
+
+@test "apply: never resolves a session locally" {
+  source "$SCRIPT"
+  echo '{}' | ac_apply >/dev/null
+  ! grep -q "session_id" "$FAKE_TMUX_LOG"
 }

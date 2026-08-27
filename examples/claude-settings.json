@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" UserPromptSubmit; fi" }
+    ] }],
+    "PostToolUse": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" PostToolUse; fi" }
+    ] }],
+    "Notification": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" Notification; fi" }
+    ] }],
+    "Stop": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" Stop; fi" }
+    ] }],
+    "SessionStart": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" SessionStart; fi" }
+    ] }],
+    "SessionEnd": [{ "hooks": [
+      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" SessionEnd; fi" }
+    ] }]
+  }
+}

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# agent-turns.sh — maintain a per-pane conversation turn counter in the pane
+# turns.sh — apply a provider-neutral conversation-turn operation.
 # option @agent-tools-turns.
 #
-# Claude Code (and agents generally) expose no turn/message count to hooks, so
-# this keeps its own: an agent's per-turn hook calls `agent-turns.sh bump`,
+# Agent hook payloads do not provide a stable turn count, so this keeps its own:
+# a provider adapter calls `turns.sh bump` once per submitted prompt,
 # which increments @agent-tools-turns on the calling pane. The count is pane-scoped so
 # it tracks the agent in the focused pane and is blank everywhere else.
 #
@@ -14,12 +14,12 @@
 #
 #   set -g @airline-segment-right-in '#{?@agent-tools-turns, #{@agent-tools-turns}⟳,}'
 #
-# It is agent-agnostic; Claude Code is the worked example in the README.
+# It is agent-agnostic; Claude and Codex adapters both call it.
 #
 #   bump        -> increment the active pane's counter (unset -> 1)
 #   reset|clear -> remove the counter (blank in the status line)
 #
-# Usage: agent-turns.sh <bump|reset|clear>
+# Usage: turns.sh <bump|reset|clear>
 #
 # The pure logic (at_next) is split from the tmux writes (at_apply) so the bats
 # suite can drive it without a tmux server.
@@ -63,7 +63,7 @@ at_apply() {
 
 at_main() {
   set -euo pipefail
-  [ $# -eq 1 ] || at_die "usage: agent-turns.sh <bump|reset|clear>"
+  [ $# -eq 1 ] || at_die "usage: turns.sh <bump|reset|clear>"
   at_apply "$1"
 }
 
