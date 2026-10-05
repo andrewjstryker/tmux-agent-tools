@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# airline.sh — mechanical access to tmux-airline's public CLI.
-#
-# Discovery, compatibility, and command construction live here so library
-# modules and adapters name Agent concepts rather than reproducing the external
-# CLI grammar.
+# airline.sh — discover and validate tmux-airline's public CLI.
+# Callers invoke the resolved executable using Airline's public grammar.
 
 AGENT_AIRLINE_VERSION_RANGE='>= 3.0.0 and < 4.0.0'
 
@@ -80,42 +77,6 @@ agent_airline_resolve() { # [diagnostic-prefix]
     return 0
   fi
   printf '%s' "$cli"
-}
-
-agent_airline_status_set() { # <cli> <level> <pane>
-  "$1" status set -t "$3" "$2"
-}
-
-agent_airline_status_clear() { # <cli> <pane>
-  "$1" status clear -t "$2"
-}
-
-agent_airline_health_set() { # <cli> <contributor> <key> <level> <message> <pane>
-  "$1" health set -t "$6" "$2" "$3" "$4" "$5"
-}
-
-agent_airline_health_clear() { # <cli> <contributor> <key> <pane>
-  "$1" health clear -t "$4" "$2" "$3"
-}
-
-agent_airline_health_recover() { # <cli> <contributor> <key> <pane>
-  "$1" health set -t "$4" "$2" "$3" ok
-}
-
-agent_airline_problem_set() { # <cli> <pane> <contributor> <key> <level> <message>
-  "$1" problem set -t "$2" "$3" "$4" "$5" "$6"
-}
-
-agent_airline_problem_recover() { # <cli> <pane> <contributor> <key>
-  "$1" problem set -t "$2" "$3" "$4" ok
-}
-
-agent_airline_problem_resolve() { # <cli> <contributor> <key>
-  "$1" problem resolve "$2" "$3"
-}
-
-agent_airline_problem_close_pane() { # <cli> <pane> <contributor>
-  "$1" problem close -t "$2" "$3"
 }
 
 # vim: ft=bash

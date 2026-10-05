@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enforce the two mechanical process boundaries recorded in DESIGN.md.
+# Enforce the tmux access and Airline discovery boundaries described in CONTRIBUTING.md.
 
 set -euo pipefail
 
@@ -9,7 +9,6 @@ violations=0
 # help string. This covers a simple command, command substitution, a pipeline,
 # and the usual shell control-keyword positions.
 tmux_invocation='(^[[:space:]]*|[$][(][[:space:]]*|[;&|][[:space:]]*|(^|[[:space:]])(command|env|if|then|while|until|!)[[:space:]]+)tmux[[:space:]]'
-airline_invocation='"\$[^"[:space:]]+"[[:space:]]+(status|health|problem)([[:space:]]|$)'
 
 while IFS= read -r file; do
   [[ "$file" != test/* ]] || continue
@@ -32,11 +31,6 @@ while IFS= read -r file; do
     if [[ "$file" != lib/airline.sh ]]; then
       if [[ "$line" == *'@airline-cli'* || "$line" == *'AIRLINE_BIN'* ]]; then
         printf '%s:%s: Airline discovery bypasses lib/airline.sh\n' \
-          "$file" "$line_number" >&2
-        violations=1
-      fi
-      if [[ "$line" =~ $airline_invocation ]]; then
-        printf '%s:%s: Airline invocation bypasses lib/airline.sh\n' \
           "$file" "$line_number" >&2
         violations=1
       fi

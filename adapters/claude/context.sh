@@ -104,23 +104,15 @@ ac_extract_metrics() {
 # token is empty. Factored out so the two meters share the observation path.
 ac_report() {   # <airline> <key> <token> [<message>]
   if [ -n "$3" ]; then
-    agent_airline_health_set \
-      "$1" "$AC_TELEMETRY_CONTRIBUTOR" "$2" "$3" "$4" "$TMUX_PANE"
+    "$1" health set -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$2" "$3" "$4"
   else
-    agent_airline_health_recover \
-      "$1" "$AC_TELEMETRY_CONTRIBUTOR" "$2" "$TMUX_PANE"
+    "$1" health set -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$2" ok
   fi
-}
-
-ac_delete_health() {   # <airline> <key>
-  agent_airline_health_clear \
-    "$1" "$AC_TELEMETRY_CONTRIBUTOR" "$2" "$TMUX_PANE"
 }
 
 ac_problem_raise() {   # <airline> <key> <category> <message>
   local airline="$1" key="$2" category="$3" message="$4"
-  if agent_airline_problem_set \
-    "$airline" "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$key" fail "$message"; then
+  if "$airline" problem set -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$key" fail "$message"; then
     ac_warn_once "$category" "$message"
   else
     ac_warn_once problem "unable to report Claude telemetry problem through airline: $message"
@@ -128,15 +120,13 @@ ac_problem_raise() {   # <airline> <key> <category> <message>
 }
 
 ac_problem_recover_key() {   # <airline> <key>
-  if ! agent_airline_problem_recover \
-    "$1" "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$2"; then
+  if ! "$1" problem set -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$2" ok; then
     ac_warn_once problem "unable to recover Claude telemetry problem through airline"
   fi
 }
 
 ac_problem_resolve_key() {   # <airline> <key>
-  if ! agent_airline_problem_resolve \
-    "$1" "$AC_TELEMETRY_CONTRIBUTOR" "$2"; then
+  if ! "$1" problem resolve "$AC_TELEMETRY_CONTRIBUTOR" "$2"; then
     ac_warn_once problem "unable to resolve Claude telemetry problem through airline"
   fi
 }
@@ -147,8 +137,8 @@ ac_problem_resolve_key() {   # <airline> <key>
 # statusLine runner.
 ac_degrade() {   # <airline> <key> <category> <message>
   local airline="$1" key="$2" category="$3" message="$4"
-  ac_delete_health "$airline" "$(ac_key "$AC_KEY_PREFIX")" || true
-  ac_delete_health "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" || true
+  "$airline" health clear -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$(ac_key "$AC_KEY_PREFIX")" || true
+  "$airline" health clear -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$(ac_key "$AC_USAGE_KEY_PREFIX")" || true
   ac_problem_raise "$airline" "$key" "$category" "$message"
   return 0
 }
@@ -159,12 +149,11 @@ ac_clear() {
   local airline
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
   airline=$(agent_airline_resolve claude-context); [ -n "$airline" ] || return 0
-  ac_delete_health "$airline" "$(ac_key "$AC_KEY_PREFIX")" || true
-  ac_delete_health "$airline" "$(ac_key "$AC_USAGE_KEY_PREFIX")" || true
+  "$airline" health clear -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$(ac_key "$AC_KEY_PREFIX")" || true
+  "$airline" health clear -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR" "$(ac_key "$AC_USAGE_KEY_PREFIX")" || true
   # The telemetry origin ended without demonstrating recovery. Close every claim
   # from this pane; Airline retains closed history and keeps other origins active.
-  if ! agent_airline_problem_close_pane \
-    "$airline" "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR"; then
+  if ! "$airline" problem close -t "$TMUX_PANE" "$AC_TELEMETRY_CONTRIBUTOR"; then
     ac_warn_once problem "unable to close Claude telemetry problems through airline"
   fi
 }

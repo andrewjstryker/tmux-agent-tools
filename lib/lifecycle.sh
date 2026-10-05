@@ -57,10 +57,10 @@ as_apply() {
   [ -n "${TMUX:-}" ] && [ -n "${TMUX_PANE:-}" ] || return 0
   airline=$(agent_airline_resolve agent-state); [ -n "$airline" ] || return 0
   if [ -n "$level" ]; then
-    agent_airline_status_set "$airline" "$level" "$TMUX_PANE"
+    "$airline" status set -t "$TMUX_PANE" "$level"
   else
     # Lifecycle is independent from provider-specific health integrations.
-    agent_airline_status_clear "$airline" "$TMUX_PANE"
+    "$airline" status clear -t "$TMUX_PANE"
   fi
   # No refresh here: airline owns the redraw and issues it only when the badge or
   # health value actually changed, so re-setting 'working' on every tool call is

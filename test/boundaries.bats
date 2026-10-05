@@ -57,7 +57,7 @@ teardown() {
 
 @test "Airline fake records an exact argument vector and injects failures" {
   local cli="$FAKE_BIN/airline"
-  agent_airline_status_set "$cli" attention %3
+  "$cli" status set -t %3 attention
 
   local -a argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
@@ -69,7 +69,7 @@ teardown() {
   [ "${argv[5]}" = attention ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_status_clear "$cli" %3
+  "$cli" status clear -t %3
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
   [ "${argv[0]}" = 4 ]
@@ -79,8 +79,7 @@ teardown() {
   [ "${argv[4]}" = %3 ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_problem_set \
-    "$cli" %3 tmux-agent-tools capability fail 'message with spaces'
+  "$cli" problem set -t %3 tmux-agent-tools capability fail 'message with spaces'
 
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
@@ -95,7 +94,7 @@ teardown() {
   [ "${argv[8]}" = 'message with spaces' ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_problem_recover "$cli" %3 tmux-agent-tools capability
+  "$cli" problem set -t %3 tmux-agent-tools capability ok
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
   [ "${argv[0]}" = 7 ]
@@ -108,7 +107,7 @@ teardown() {
   [ "${argv[7]}" = ok ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_problem_resolve "$cli" tmux-agent-tools capability
+  "$cli" problem resolve tmux-agent-tools capability
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
   [ "${argv[0]}" = 4 ]
@@ -118,7 +117,7 @@ teardown() {
   [ "${argv[4]}" = capability ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_problem_close_pane "$cli" %3 tmux-agent-tools
+  "$cli" problem close -t %3 tmux-agent-tools
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
   [ "${argv[0]}" = 5 ]
@@ -129,7 +128,7 @@ teardown() {
   [ "${argv[5]}" = tmux-agent-tools ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_health_set "$cli" tmux-agent-tools context fail '95% used' %3
+  "$cli" health set -t %3 tmux-agent-tools context fail '95% used'
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
   [ "${argv[0]}" = 8 ]
@@ -143,7 +142,7 @@ teardown() {
   [ "${argv[8]}" = '95% used' ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_health_clear "$cli" tmux-agent-tools context %3
+  "$cli" health clear -t %3 tmux-agent-tools context
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
   [ "${argv[0]}" = 6 ]
@@ -155,7 +154,7 @@ teardown() {
   [ "${argv[6]}" = context ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_health_recover "$cli" tmux-agent-tools context %3
+  "$cli" health set -t %3 tmux-agent-tools context ok
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
   [ "${argv[0]}" = 7 ]
@@ -168,7 +167,7 @@ teardown() {
   [ "${argv[7]}" = ok ]
 
   export FAKE_AIRLINE_FAIL=health
-  run agent_airline_health_set "$cli" tmux-agent-tools context fail '95% used' %3
+  run "$cli" health set -t %3 tmux-agent-tools context fail '95% used'
   [ "$status" -eq 65 ]
 }
 
