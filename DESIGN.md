@@ -68,9 +68,9 @@ Airline owns its public `status`, `health`, and `problem` protocols, their store
 state, reduction, rendering, redraw behavior, and tmux topology. Agent never
 reads or writes Airline's private tmux options.
 
-Agent necessarily uses tmux for its own pane-scoped value and configuration, to
-resolve the calling pane's canonical session, and to read documented bootstrap
-handles. Plugin-internal calls are isolated in a small mechanical `lib/tmux.sh`
+Agent necessarily uses tmux for its own pane-scoped value and configuration and
+to read documented bootstrap handles. Plugin-internal calls are isolated in a
+small mechanical `lib/tmux.sh`
 boundary. The sole exception is the installed `agent` facade: because it cannot
 know or source a movable plugin directory, it directly reads only `@agent-cli`.
 No other production file invokes `tmux`. This boundary makes ownership
@@ -101,7 +101,11 @@ does not inspect Airline implementation details or reproduce Airline behavior.
 
 ## Signal semantics
 
-Lifecycle is normal operation and uses Airline's window-scoped `status` channel.
+Lifecycle is normal operation and uses Airline's pane-identified, window-reduced
+`status` channel.
+For a completed result, Agent reports only the `result` phase. Airline owns its
+transient observation semantics, pane revision counter, hook, and conditional
+cleanup. Agent stores no parallel lifecycle or observation state.
 Context-window and usage-limit pressure are also normal operation and use the
 window-scoped `health` channel, including at `fail` severity. Status and health
 direct the user to a window; the pane is expected to contain the operational
@@ -113,33 +117,37 @@ cannot be interpreted, or a failed health update through an otherwise compatible
 Airline CLI. Problems do not represent agent lifecycle, window attention, pane
 attention, or resource pressure.
 
-Problem mutations are explicitly session-scoped. Agent resolves the calling
-pane to one canonical tmux session and invokes only:
+Problems are server-global lifecycle entries. Agent reports each telemetry
+assertion with its pane origin and stable contributor identity:
 
 ```text
-airline problem set <session> <key> <warn|fail> <message>
-airline problem clear <session> <key>
+airline problem set -t <pane> <contributor> <key> <warn|fail> <message>
+airline problem set -t <pane> <contributor> <key> ok
+airline problem resolve <contributor> <key>
+airline problem close -t <pane> <contributor>
 ```
 
-Agent does not pass a pane target to `problem`, and neither Agent nor Airline
-projects the mutation to sessions that happen to link the same window. Airline
-assigns no meaning to the message. Agent may include a pane or window identifier
-when that helps the user diagnose the failed capability.
+Airline makes active problems visible in every initialized session while retaining
+each pane as an independent origin claim. Pane-local recovery uses `set ... ok`.
+When Agent verifies that the shared `jq` requirement is restored, `problem resolve`
+authoritatively retires every stale origin claim. Neither path uses `problem ack`
+or `problem clear`: acknowledgement changes presentation, while clear deletes the
+global ledger and its claims. When a Claude telemetry
+origin ends, Agent closes its contributor claims so Airline can retain closed
+history without leaving them active. Airline assigns no meaning to the diagnostic
+message.
 
-Problem keys identify the failed capability at the narrowest scope that owns the
-failure. A shared Claude dependency such as `jq` uses one stable key, for example
-`agent-claude-telemetry-jq`, so repeated evaluations and multiple Claude panes do
-not create copies of the same problem. A failure that belongs to one provider
-input stream uses a pane-qualified key, for example
-`agent-claude-telemetry-input-3`, so success in another pane cannot clear it.
-Airline's keyed contributor semantics make identical reports idempotent; Agent
-does not maintain a separate transition marker.
+The contributor is `tmux-agent-tools-claude-telemetry`; keys `jq`, `input`, and
+`health-update` identify its failed capabilities. Airline's origin claims let
+multiple panes assert the same logical key independently, so one pane's recovery
+cannot clear another pane's claim. Identical reports are idempotent; Agent does not
+maintain a separate transition marker.
 
 An advertised telemetry capability that cannot operate is a `fail` problem. This
 includes a missing `jq` while Claude telemetry is configured, provider input that
 cannot be interpreted, and a failed Airline health mutation through an otherwise
-compatible CLI. A validly absent optional measurement is normal operation: its
-health contribution is cleared and no problem is reported. `jq` is not required
+compatible CLI. A validly absent optional measurement is normal operation: the
+reporter sets its health contribution to `ok` and no problem is reported. `jq` is not required
 for Codex or for provider-neutral lifecycle and turn operations.
 
 ## Provider mapping
@@ -182,8 +190,8 @@ Tests are divided by responsibility:
 
 1. Pure tests cover lifecycle and provider mappings, telemetry extraction and
    thresholds, and version-range parsing.
-2. Boundary tests cover exact tmux calls, canonical-session resolution, exact
-   Airline argument vectors, and injected failures.
+2. Boundary tests cover exact tmux calls, pane-origin problem reporting, exact
+   Airline argument vectors, strict signal tuple validation, and injected failures.
 3. Compatibility tests cover a missing CLI, accepted 3.x releases, rejected 2.x
    and 4.x releases, malformed output, a failing `version` command, warn-once
    behavior, and absence of mutations after rejection.
@@ -209,7 +217,6 @@ Implementation proceeds in independently reviewable chunks:
 3. Add `agent`, `agent.tmux`, installation behavior, and their tests; remove the
    old executable handles without aliases.
 4. Add the Airline 3.x compatibility guard and degraded-installation tests.
-5. Correct session-scoped problem reporting and independent contributor
-   ownership.
+5. Correct global problem reporting, pane-origin claims, and contributor ownership.
 6. Update Claude and Codex mappings and checked-in provider configurations.
 7. Update the README and release metadata, then run the complete release check.

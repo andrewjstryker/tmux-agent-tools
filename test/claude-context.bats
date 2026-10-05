@@ -23,7 +23,6 @@ setup() {
   export AIRLINE_BIN="${FAKE_BIN}/airline"
   export TMUX="/tmp/fake,1,0"
   export TMUX_PANE="%3"
-  export FAKE_TMUX_SESSION='$7'
 }
 
 teardown() {
@@ -32,7 +31,7 @@ teardown() {
 
 # --- pure tier mapping ---
 
-@test "tier: below warn clears" {
+@test "tier: below warn maps to recovery" {
   source "$SCRIPT"; run ac_tier 50 80 90; [ -z "$output" ]
 }
 
@@ -52,7 +51,7 @@ teardown() {
   source "$SCRIPT"; run ac_tier 99 80 90; [ "$output" = "fail" ]
 }
 
-@test "tier: non-numeric clears" {
+@test "tier: non-numeric maps to recovery" {
   source "$SCRIPT"; run ac_tier "" 80 90; [ -z "$output" ]
 }
 
@@ -101,52 +100,52 @@ teardown() {
 @test "apply: high usage reports fail health" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":95}}' | ac_apply >/dev/null
-  grep -q "health set ctx-3 fail -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry ctx-3 fail Claude context window 95% used in pane %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: mid usage reports warn health" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":83}}' | ac_apply >/dev/null
-  grep -q "health set ctx-3 warn -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry ctx-3 warn Claude context window 83% used in pane %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: low usage clears the health key" {
+@test "apply: low usage reports health recovery" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":40}}' | ac_apply >/dev/null
-  grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry ctx-3 ok" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: thresholds are overridable via tmux options" {
   source "$SCRIPT"
   FAKE_WARN=50 FAKE_FAIL=70
   echo '{"context_window":{"used_percentage":55}}' | ac_apply >/dev/null
-  grep -q "health set ctx-3 warn -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry ctx-3 warn Claude context window 55% used in pane %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: high rate-limit reports fail on the usage key" {
   source "$SCRIPT"
   echo '{"rate_limits":{"seven_day":{"used_percentage":95}}}' | ac_apply >/dev/null
-  grep -q "health set usage-3 fail -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry usage-3 fail Claude usage limit 95% used in pane %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: mid rate-limit reports warn on the usage key" {
   source "$SCRIPT"
   echo '{"rate_limits":{"five_hour":{"used_percentage":83}}}' | ac_apply >/dev/null
-  grep -q "health set usage-3 warn -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry usage-3 warn Claude usage limit 83% used in pane %3" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: no rate_limits clears the usage key" {
+@test "apply: no rate_limits reports usage health recovery" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":40}}' | ac_apply >/dev/null
-  grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry usage-3 ok" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: usage thresholds are independently overridable" {
   source "$SCRIPT"
   FAKE_USAGE_WARN=50 FAKE_USAGE_FAIL=70   # context stays 80/90
   echo '{"context_window":{"used_percentage":55},"rate_limits":{"five_hour":{"used_percentage":55}}}' | ac_apply >/dev/null
-  grep -q "health set usage-3 warn -t %3" "$FAKE_AIRLINE_LOG" # 55 >= usage warn 50
-  grep -q "health clear ctx-3 -t %3"       "$FAKE_AIRLINE_LOG" # 55 < context warn 80
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry usage-3 warn Claude usage limit 55% used in pane %3" "$FAKE_AIRLINE_LOG" # 55 >= usage warn 50
+  grep -q "health set -t %3 tmux-agent-tools-claude-telemetry ctx-3 ok" "$FAKE_AIRLINE_LOG" # 55 < context warn 80
 }
 
 @test "keys: health contributors are qualified by the calling pane" {
@@ -159,11 +158,9 @@ teardown() {
 @test "clear: removes only the calling pane's Claude health contributors" {
   source "$SCRIPT"
   ac_clear
-  grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
-  grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
-  grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
-  grep -q 'problem clear $7 agent-claude-telemetry-update-3' "$FAKE_AIRLINE_LOG"
-  ! grep -q 'problem clear .*agent-claude-telemetry-jq' "$FAKE_AIRLINE_LOG"
+  grep -q "health clear -t %3 tmux-agent-tools-claude-telemetry ctx-3" "$FAKE_AIRLINE_LOG"
+  grep -q "health clear -t %3 tmux-agent-tools-claude-telemetry usage-3" "$FAKE_AIRLINE_LOG"
+  grep -q 'problem close -t %3 tmux-agent-tools-claude-telemetry' "$FAKE_AIRLINE_LOG"
 }
 
 @test "main: clear emits no statusLine output" {
@@ -221,7 +218,7 @@ teardown() {
   [ ! -s "${TESTDIR}/err" ]                        # silent the second time
 }
 
-@test "apply: missing jq is a shared fail problem in one canonical session" {
+@test "apply: missing jq is a global problem with the calling pane as origin" {
   source "$SCRIPT"
   ac_have_jq() { return 1; }                        # simulate jq absent via the seam
   local json='{"context_window":{"used_percentage":95}}'
@@ -229,11 +226,10 @@ teardown() {
   out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
   [ "$out" = "$json" ]                              # status line never breaks
   grep -q "jq not found" "${TESTDIR}/err"           # the missing dep is visible
-  grep -q "health clear ctx-3 -t %3" "$FAKE_AIRLINE_LOG"
-  grep -q "health clear usage-3 -t %3" "$FAKE_AIRLINE_LOG"
-  grep -q 'problem set $7 agent-claude-telemetry-jq fail .*jq not found' "$FAKE_AIRLINE_LOG"
-  ! grep -q 'problem .* -t ' "$FAKE_AIRLINE_LOG"
-  [ "$(grep -c 'display-message -p -t %3 #{session_id}' "$FAKE_TMUX_LOG")" -eq 1 ]
+  grep -q "health clear -t %3 tmux-agent-tools-claude-telemetry ctx-3" "$FAKE_AIRLINE_LOG"
+  grep -q "health clear -t %3 tmux-agent-tools-claude-telemetry usage-3" "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry jq fail .*jq not found' "$FAKE_AIRLINE_LOG"
+  ! grep -q 'session_id' "$FAKE_TMUX_LOG"
 }
 
 @test "apply: malformed JSON degrades without breaking passthrough" {
@@ -242,9 +238,9 @@ teardown() {
   out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
   [ "$out" = "$json" ]
   grep -q "invalid statusLine JSON" "${TESTDIR}/err"
-  grep -q 'problem clear $7 agent-claude-telemetry-jq' "$FAKE_AIRLINE_LOG"
-  grep -q 'problem set $7 agent-claude-telemetry-input-3 fail .*pane %3: invalid statusLine JSON' "$FAKE_AIRLINE_LOG"
-  ! grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem resolve tmux-agent-tools-claude-telemetry jq' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry input fail .*pane %3: invalid statusLine JSON' "$FAKE_AIRLINE_LOG"
+  ! grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry input ok' "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: airline health failure becomes a graceful adapter problem" {
@@ -254,17 +250,18 @@ teardown() {
   out=$(printf '%s' "$json" | ac_apply 2>"${TESTDIR}/err")
   [ "$out" = "$json" ]
   grep -q "airline health update failed" "${TESTDIR}/err"
-  grep -q 'problem clear $7 agent-claude-telemetry-jq' "$FAKE_AIRLINE_LOG"
-  grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
-  grep -q 'problem set $7 agent-claude-telemetry-update-3 fail .*pane %3: airline health update failed' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem resolve tmux-agent-tools-claude-telemetry jq' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry input ok' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry health-update fail .*pane %3: airline health update failed' "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: successful evaluation clears shared and pane-owned problems" {
+@test "apply: successful evaluation resolves shared jq and recovers pane claims" {
   source "$SCRIPT"
   echo '{"context_window":{"used_percentage":40}}' | ac_apply >/dev/null
-  grep -q 'problem clear $7 agent-claude-telemetry-jq' "$FAKE_AIRLINE_LOG"
-  grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
-  grep -q 'problem clear $7 agent-claude-telemetry-update-3' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem resolve tmux-agent-tools-claude-telemetry jq' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry input ok' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry health-update ok' "$FAKE_AIRLINE_LOG"
+  ! grep -q 'problem clear' "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: degradation re-reports the same stable shared capability key" {
@@ -272,26 +269,26 @@ teardown() {
   ac_have_jq() { return 1; }
   echo '{}' | ac_apply >/dev/null
   echo '{}' | ac_apply >/dev/null
-  [ "$(grep -c 'problem set $7 agent-claude-telemetry-jq fail .*jq not found' "$FAKE_AIRLINE_LOG")" -eq 2 ]
+  [ "$(grep -c 'problem set -t %3 tmux-agent-tools-claude-telemetry jq fail .*jq not found' "$FAKE_AIRLINE_LOG")" -eq 2 ]
 }
 
-@test "apply: resolves the calling pane session once per evaluation" {
+@test "apply: does not resolve a session" {
   source "$SCRIPT"
   echo '{}' | ac_apply >/dev/null
-  [ "$(grep -c 'display-message -p -t %3 #{session_id}' "$FAKE_TMUX_LOG")" -eq 1 ]
+  ! grep -q 'session_id' "$FAKE_TMUX_LOG"
 }
 
-@test "input failures are pane-qualified and another pane cannot clear them" {
+@test "input failures use independent pane-origin claims under one logical key" {
   source "$SCRIPT"
   printf '{bad' | ac_apply >/dev/null 2>&1
   TMUX_PANE=%9
   printf '{bad' | ac_apply >/dev/null 2>&1
   printf '{}' | ac_apply >/dev/null
 
-  grep -q 'problem set $7 agent-claude-telemetry-input-3 fail' "$FAKE_AIRLINE_LOG"
-  grep -q 'problem set $7 agent-claude-telemetry-input-9 fail' "$FAKE_AIRLINE_LOG"
-  grep -q 'problem clear $7 agent-claude-telemetry-input-9' "$FAKE_AIRLINE_LOG"
-  ! grep -q 'problem clear $7 agent-claude-telemetry-input-3' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry input fail' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %9 tmux-agent-tools-claude-telemetry input fail' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %9 tmux-agent-tools-claude-telemetry input ok' "$FAKE_AIRLINE_LOG"
+  ! grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry input ok' "$FAKE_AIRLINE_LOG"
 }
 
 @test "multiple panes report jq under one shared key" {
@@ -301,17 +298,17 @@ teardown() {
   TMUX_PANE=%9
   printf '{}' | ac_apply >/dev/null 2>&1
 
-  [ "$(grep -c 'problem set $7 agent-claude-telemetry-jq fail' "$FAKE_AIRLINE_LOG")" -eq 2 ]
-  ! grep -qE 'agent-claude-telemetry-jq-[39]' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %3 tmux-agent-tools-claude-telemetry jq fail' "$FAKE_AIRLINE_LOG"
+  grep -q 'problem set -t %9 tmux-agent-tools-claude-telemetry jq fail' "$FAKE_AIRLINE_LOG"
 }
 
-@test "an unresolved session prevents problem mutation but not passthrough" {
+@test "a failed pane-origin problem mutation does not break passthrough" {
   source "$SCRIPT"
-  export FAKE_TMUX_SESSION_FAIL=1
+  export FAKE_AIRLINE_FAIL=problem
   local json='{bad'
 
   out=$(printf '%s' "$json" | ac_apply 2>"$TESTDIR/err")
   [ "$out" = "$json" ]
-  grep -q 'cannot resolve a session for pane %3' "$TESTDIR/err"
-  ! grep -q '^problem ' "$FAKE_AIRLINE_LOG"
+  grep -q 'unable to report Claude telemetry problem through airline' "$TESTDIR/err"
+  grep -q '^problem set -t %3 ' "$FAKE_AIRLINE_LOG"
 }

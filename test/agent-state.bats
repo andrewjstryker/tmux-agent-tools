@@ -36,8 +36,8 @@ teardown() {
   source "$SCRIPT"; run as_map needs-input; [ "$output" = "attention" ]
 }
 
-@test "map: done -> result, transient" {
-  source "$SCRIPT"; run as_map done; [ "$output" = "result 1" ]
+@test "map: done -> result" {
+  source "$SCRIPT"; run as_map done; [ "$output" = "result" ]
 }
 
 @test "map: idle and clear -> empty" {
@@ -56,36 +56,30 @@ teardown() {
 
 # --- applying via the airline CLI ---
 
-@test "apply: needs-input lights the agent lane attention (sticky)" {
+@test "apply: needs-input sets the pane workflow to attention" {
   source "$SCRIPT"; as_apply needs-input
-  grep -q "status set agent-3 attention -t %3" "$FAKE_AIRLINE_LOG"
-  ! grep -q -- "--transient" "$FAKE_AIRLINE_LOG"
+  grep -q "status set -t %3 attention" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: working lights the agent lane active" {
+@test "apply: working sets the pane workflow to active" {
   source "$SCRIPT"; as_apply working
-  grep -q "status set agent-3 active -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status set -t %3 active" "$FAKE_AIRLINE_LOG"
 }
 
-@test "apply: done lights the agent lane result and marks it transient" {
+@test "apply: done sets the pane workflow to result" {
   source "$SCRIPT"; as_apply done
-  grep -q "status set agent-3 result --transient -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status set -t %3 result" "$FAKE_AIRLINE_LOG"
+  ! grep -q "set-hook\|status clear" "$FAKE_TMUX_LOG"
 }
 
-@test "apply: clear clears the agent lane" {
+@test "apply: clear clears the pane workflow" {
   source "$SCRIPT"; as_apply clear
-  grep -q "status clear agent-3 -t %3" "$FAKE_AIRLINE_LOG"
+  grep -q "status clear -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: clear does not clear independent provider health" {
   source "$SCRIPT"; as_apply clear
   ! grep -q "health clear" "$FAKE_AIRLINE_LOG"
-}
-
-@test "key: contributor is qualified by the calling pane" {
-  source "$SCRIPT"
-  TMUX_PANE=%9
-  [ "$(as_key)" = "agent-9" ]
 }
 
 @test "apply: does not refresh the client itself (airline owns the redraw)" {

@@ -1,22 +1,25 @@
 {
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" UserPromptSubmit; fi" }
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook claude UserPromptSubmit; fi" }
     ] }],
-    "PostToolUse": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" PostToolUse; fi" }
+    "PermissionRequest": [{ "hooks": [
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook claude PermissionRequest; fi" }
     ] }],
-    "Notification": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" Notification; fi" }
+    "PostToolBatch": [{ "hooks": [
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook claude PostToolBatch; fi" }
     ] }],
     "Stop": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" Stop; fi" }
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook claude Stop; fi" }
     ] }],
-    "SessionStart": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" SessionStart; fi" }
-    ] }],
+    "SessionStart": [{
+      "matcher": "startup|clear",
+      "hooks": [
+        { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook claude SessionStart; fi" }
+      ]
+    }],
     "SessionEnd": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-claude-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" SessionEnd; fi" }
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook claude SessionEnd; fi" }
     ] }]
   }
 }

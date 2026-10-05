@@ -82,33 +82,40 @@ agent_airline_resolve() { # [diagnostic-prefix]
   printf '%s' "$cli"
 }
 
-agent_airline_status_set() { # <cli> <key> <level> <transient-or-empty> <pane>
-  local cli="$1" key="$2" level="$3" transient="$4" pane="$5"
-  if [[ -n "$transient" ]]; then
-    "$cli" status set "$key" "$level" --transient -t "$pane"
-  else
-    "$cli" status set "$key" "$level" -t "$pane"
-  fi
+agent_airline_status_set() { # <cli> <level> <pane>
+  "$1" status set -t "$3" "$2"
 }
 
-agent_airline_status_clear() { # <cli> <key> <pane>
-  "$1" status clear "$2" -t "$3"
+agent_airline_status_clear() { # <cli> <pane>
+  "$1" status clear -t "$2"
 }
 
-agent_airline_health_set() { # <cli> <key> <level> <pane>
-  "$1" health set "$2" "$3" -t "$4"
+agent_airline_health_set() { # <cli> <contributor> <key> <level> <message> <pane>
+  "$1" health set -t "$6" "$2" "$3" "$4" "$5"
 }
 
-agent_airline_health_clear() { # <cli> <key> <pane>
-  "$1" health clear "$2" -t "$3"
+agent_airline_health_clear() { # <cli> <contributor> <key> <pane>
+  "$1" health clear -t "$4" "$2" "$3"
 }
 
-agent_airline_problem_set() { # <cli> <session> <key> <level> <message>
-  "$1" problem set "$2" "$3" "$4" "$5"
+agent_airline_health_recover() { # <cli> <contributor> <key> <pane>
+  "$1" health set -t "$4" "$2" "$3" ok
 }
 
-agent_airline_problem_clear() { # <cli> <session> <key>
-  "$1" problem clear "$2" "$3"
+agent_airline_problem_set() { # <cli> <pane> <contributor> <key> <level> <message>
+  "$1" problem set -t "$2" "$3" "$4" "$5" "$6"
+}
+
+agent_airline_problem_recover() { # <cli> <pane> <contributor> <key>
+  "$1" problem set -t "$2" "$3" "$4" ok
+}
+
+agent_airline_problem_resolve() { # <cli> <contributor> <key>
+  "$1" problem resolve "$2" "$3"
+}
+
+agent_airline_problem_close_pane() { # <cli> <pane> <contributor>
+  "$1" problem close -t "$2" "$3"
 }
 
 # vim: ft=bash

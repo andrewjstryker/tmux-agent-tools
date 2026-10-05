@@ -11,10 +11,6 @@ agent_tmux_pane_get() { tmux show -pqv -t "$1" "$2"; }
 agent_tmux_pane_set() { tmux set -p -t "$1" "$2" "$3"; }
 agent_tmux_pane_unset() { tmux set -pu -t "$1" "$2"; }
 
-agent_tmux_current_session() {
-  tmux display-message -p -t "$1" '#{session_id}'
-}
-
 agent_tmux_refresh_status() { tmux refresh-client -S; }
 
 # vim: ft=bash

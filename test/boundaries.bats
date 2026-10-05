@@ -30,8 +30,6 @@ teardown() {
   agent_tmux_pane_get %3 @agent-tools-turns >/dev/null
   agent_tmux_pane_set %3 @agent-tools-turns 5
   agent_tmux_pane_unset %3 @agent-tools-turns
-  export FAKE_TMUX_SESSION='$7'
-  session="$(agent_tmux_current_session %3)"
   agent_tmux_refresh_status
 
   grep -qx 'show -gqv @example' "$FAKE_TMUX_LOG"
@@ -39,8 +37,6 @@ teardown() {
   grep -qx 'show -pqv -t %3 @agent-tools-turns' "$FAKE_TMUX_LOG"
   grep -qx 'set -p -t %3 @agent-tools-turns 5' "$FAKE_TMUX_LOG"
   grep -qx 'set -pu -t %3 @agent-tools-turns' "$FAKE_TMUX_LOG"
-  [ "$session" = '$7' ]
-  grep -qx 'display-message -p -t %3 #{session_id}' "$FAKE_TMUX_LOG"
   grep -qx 'refresh-client -S' "$FAKE_TMUX_LOG"
 }
 
@@ -61,30 +57,153 @@ teardown() {
 
 @test "Airline fake records an exact argument vector and injects failures" {
   local cli="$FAKE_BIN/airline"
-  agent_airline_problem_set \
-    "$cli" '$7' capability fail 'message with spaces'
+  agent_airline_status_set "$cli" attention %3
 
   local -a argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
-  [ "${argv[0]}" = 6 ]
-  [ "${argv[1]}" = problem ]
+  [ "${argv[0]}" = 5 ]
+  [ "${argv[1]}" = status ]
   [ "${argv[2]}" = set ]
-  [ "${argv[3]}" = '$7' ]
-  [ "${argv[4]}" = capability ]
-  [ "${argv[5]}" = fail ]
-  [ "${argv[6]}" = 'message with spaces' ]
+  [ "${argv[3]}" = -t ]
+  [ "${argv[4]}" = %3 ]
+  [ "${argv[5]}" = attention ]
 
   : > "$FAKE_AIRLINE_ARGV_LOG"
-  agent_airline_problem_clear "$cli" '$7' capability
+  agent_airline_status_clear "$cli" %3
+  argv=()
+  mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
+  [ "${argv[0]}" = 4 ]
+  [ "${argv[1]}" = status ]
+  [ "${argv[2]}" = clear ]
+  [ "${argv[3]}" = -t ]
+  [ "${argv[4]}" = %3 ]
+
+  : > "$FAKE_AIRLINE_ARGV_LOG"
+  agent_airline_problem_set \
+    "$cli" %3 tmux-agent-tools capability fail 'message with spaces'
+
+  argv=()
+  mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
+  [ "${argv[0]}" = 8 ]
+  [ "${argv[1]}" = problem ]
+  [ "${argv[2]}" = set ]
+  [ "${argv[3]}" = -t ]
+  [ "${argv[4]}" = %3 ]
+  [ "${argv[5]}" = tmux-agent-tools ]
+  [ "${argv[6]}" = capability ]
+  [ "${argv[7]}" = fail ]
+  [ "${argv[8]}" = 'message with spaces' ]
+
+  : > "$FAKE_AIRLINE_ARGV_LOG"
+  agent_airline_problem_recover "$cli" %3 tmux-agent-tools capability
+  argv=()
+  mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
+  [ "${argv[0]}" = 7 ]
+  [ "${argv[1]}" = problem ]
+  [ "${argv[2]}" = set ]
+  [ "${argv[3]}" = -t ]
+  [ "${argv[4]}" = %3 ]
+  [ "${argv[5]}" = tmux-agent-tools ]
+  [ "${argv[6]}" = capability ]
+  [ "${argv[7]}" = ok ]
+
+  : > "$FAKE_AIRLINE_ARGV_LOG"
+  agent_airline_problem_resolve "$cli" tmux-agent-tools capability
   argv=()
   mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
   [ "${argv[0]}" = 4 ]
   [ "${argv[1]}" = problem ]
-  [ "${argv[2]}" = clear ]
-  [ "${argv[3]}" = '$7' ]
+  [ "${argv[2]}" = resolve ]
+  [ "${argv[3]}" = tmux-agent-tools ]
   [ "${argv[4]}" = capability ]
 
+  : > "$FAKE_AIRLINE_ARGV_LOG"
+  agent_airline_problem_close_pane "$cli" %3 tmux-agent-tools
+  argv=()
+  mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
+  [ "${argv[0]}" = 5 ]
+  [ "${argv[1]}" = problem ]
+  [ "${argv[2]}" = close ]
+  [ "${argv[3]}" = -t ]
+  [ "${argv[4]}" = %3 ]
+  [ "${argv[5]}" = tmux-agent-tools ]
+
+  : > "$FAKE_AIRLINE_ARGV_LOG"
+  agent_airline_health_set "$cli" tmux-agent-tools context fail '95% used' %3
+  argv=()
+  mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
+  [ "${argv[0]}" = 8 ]
+  [ "${argv[1]}" = health ]
+  [ "${argv[2]}" = set ]
+  [ "${argv[3]}" = -t ]
+  [ "${argv[4]}" = %3 ]
+  [ "${argv[5]}" = tmux-agent-tools ]
+  [ "${argv[6]}" = context ]
+  [ "${argv[7]}" = fail ]
+  [ "${argv[8]}" = '95% used' ]
+
+  : > "$FAKE_AIRLINE_ARGV_LOG"
+  agent_airline_health_clear "$cli" tmux-agent-tools context %3
+  argv=()
+  mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
+  [ "${argv[0]}" = 6 ]
+  [ "${argv[1]}" = health ]
+  [ "${argv[2]}" = clear ]
+  [ "${argv[3]}" = -t ]
+  [ "${argv[4]}" = %3 ]
+  [ "${argv[5]}" = tmux-agent-tools ]
+  [ "${argv[6]}" = context ]
+
+  : > "$FAKE_AIRLINE_ARGV_LOG"
+  agent_airline_health_recover "$cli" tmux-agent-tools context %3
+  argv=()
+  mapfile -d '' -t argv < "$FAKE_AIRLINE_ARGV_LOG"
+  [ "${argv[0]}" = 7 ]
+  [ "${argv[1]}" = health ]
+  [ "${argv[2]}" = set ]
+  [ "${argv[3]}" = -t ]
+  [ "${argv[4]}" = %3 ]
+  [ "${argv[5]}" = tmux-agent-tools ]
+  [ "${argv[6]}" = context ]
+  [ "${argv[7]}" = ok ]
+
   export FAKE_AIRLINE_FAIL=health
-  run agent_airline_health_set "$cli" context fail %3
+  run agent_airline_health_set "$cli" tmux-agent-tools context fail '95% used' %3
   [ "$status" -eq 65 ]
+}
+
+@test "Airline fake rejects the obsolete keyed and transient status shapes" {
+  local cli="$FAKE_BIN/airline"
+
+  run "$cli" status set agent-3 active -t %3
+  [ "$status" -eq 64 ]
+
+  run "$cli" status set result --transient -t %3
+  [ "$status" -eq 64 ]
+
+  run "$cli" status clear agent-3 -t %3
+  [ "$status" -eq 64 ]
+
+  run "$cli" status set result --print-revision -t %3
+  [ "$status" -eq 64 ]
+}
+
+@test "Airline fake rejects the obsolete health argument shape" {
+  local cli="$FAKE_BIN/airline"
+
+  run "$cli" health set context fail -t %3
+  [ "$status" -eq 64 ]
+
+  run "$cli" health set -t %3 context warn
+  [ "$status" -eq 64 ]
+
+  run "$cli" health clear context -t %3
+  [ "$status" -eq 64 ]
+}
+
+@test "Airline fake rejects Agent's obsolete session-origin problem shape" {
+  local cli="$FAKE_BIN/airline"
+
+  run "$cli" problem set '$7' capability fail 'message'
+  [ "$status" -eq 64 ]
 }

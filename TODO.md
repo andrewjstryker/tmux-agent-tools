@@ -41,22 +41,32 @@ tmux-airline release work is outside this repository's scope.
   failed or malformed version response, and an incompatible version.
 - [x] Test accepted 3.x versions, rejected 2.x and 4.x versions, malformed output,
   command failure, warning suppression, and absence of mutations after rejection.
+- [x] Follow Airline's strict health grammar: put `-t <window>` before the keyed
+  contributor tuple, attach an opaque diagnostic to every `warn`/`fail`, and use
+  the same target ordering for `clear`.
 
 ## 5. Signal and problem semantics — completed
 
 - [x] Keep lifecycle on window-scoped `status` and context/usage pressure on
   window-scoped `health`, including `fail` health.
-- [x] Resolve the calling pane to one canonical tmux session before reporting a
-  plugin capability problem.
-- [x] Use only `airline problem set <session> ...` and `problem clear <session> ...`;
-  do not pass a pane target or project through linked sessions.
+- [x] Follow Airline's pane-identified workflow status API: set only the phase and
+  pane target and omit contributor keys, transient policy, revisions, and hooks.
+  Airline interprets `result` as transient and owns observation cleanup.
+- [x] Use Airline's server-global problem ledger with `-t "$TMUX_PANE"` origin
+  claims. Agent performs no pane-to-session resolution; Airline makes active
+  problems visible in every initialized session and owns origin cleanup hooks.
+- [x] Resolve the globally shared `jq` capability with `problem resolve`; recover
+  pane-local input/update claims with `problem set -t ... ok`; reserve
+  `problem ack` for user acknowledgement and `problem clear` for destructive
+  deletion. Close the pane contributor's claims
+  when its Claude telemetry origin ends.
 - [x] Treat problem messages as opaque to Airline. Include pane/window context when
   useful to the user.
 - [x] Report unavailable advertised telemetry as `fail`. A missing `jq` is a Claude
   telemetry failure only; Codex, lifecycle, and turns do not require it.
-- [x] Give shared failures stable capability keys so repeated evaluations and panes
-  do not duplicate one problem. Pane-qualify only failures owned by one input
-  stream so another pane cannot clear them.
+- [x] Use contributor `tmux-agent-tools-claude-telemetry` with stable `jq`, `input`,
+  and `health-update` keys. Airline's pane-origin claims keep concurrent reporters
+  independent under the same logical problem.
 
 ## 6. Provider adapters and examples — completed
 
@@ -95,14 +105,16 @@ tmux-airline release work is outside this repository's scope.
   resetting a broken session completely requires three commands. Any aggregate
   operation must be added deliberately to the settled CLI grammar and tests.
 - [ ] Measure the Claude status-line success path before release. It currently
-  performs Airline version discovery, session resolution, `jq`, two health
-  mutations, and three problem clears per evaluation. Optimize only if the measured
+  performs Airline version discovery, `jq`, two health mutations, and three problem
+  recovery operations per evaluation. Optimize only if the measured
   process cost is material; Airline idempotence already avoids redundant state and
   redraw changes.
 
 ## 8. Completion
 
 - [ ] Update the README, requirements, examples, and release metadata to the final
-  CLI and Airline 3.x contract.
-- [ ] Run the complete fake-based suite and shellcheck. No real Airline installation
-  is required to establish the Agent contract.
+      CLI and Airline 3.x contract.
+- [ ] Run `make release-check AIRLINE_SOURCE=/path/to/tmux-airline/airline.sh`.
+      The portable suite and shellcheck establish Agent behavior; the release-only
+      smoke additionally passes Agent's exact health/problem vectors through the
+      selected Airline source parser without starting tmux or mutating Airline state.

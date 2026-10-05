@@ -34,8 +34,8 @@ Three independent signals, each matched to the airline channel that fits it:
 
 - **Lifecycle → status badge.** A small glyph before the window name shows which
   window is **working** (`○`), **wants your input** (`◆`), or is **done** (`●`).
-  Lifecycle is an *event* signal, so airline's status lane (its left-of-name
-  badge stack) is the right treatment.
+  Lifecycle is pane workflow state, so airline's status lane (its left-of-name
+  badge) is the right treatment.
 - **Resource pressure → health gutter.** When a provider exposes context or
   usage pressure, a condition glyph appears in the window's
   **right gutter**, **amber then red**. Both are *meters* (sustained resource
@@ -49,10 +49,10 @@ context limit (red gutter glyph) and show a turn count.
 
 ## Lifecycle → status badge
 
-`lib/lifecycle.sh` lights a pane-qualified status contributor via
-`airline status set agent-<pane> <level>`. Pane qualification lets multiple
-agents share a window without overwriting each other. airline's status channel
-has three fixed levels; the plugin picks the *level* and airline owns the glyph:
+`lib/lifecycle.sh` sets the calling pane's workflow phase via
+`airline status set <level> -t <pane>`. Airline uses the pane itself as status
+identity, so multiple agents can share a window without overwriting each other.
+The plugin picks the *level* and airline owns the glyph:
 
 | State | airline level | Badge | In the window list |
 | ----- | ------------- | ----- | ------------------ |
@@ -61,8 +61,10 @@ has three fixed levels; the plugin picks the *level* and airline owns the glyph:
 | `done` | `result` | `●` green | finished well (clears when you view & leave) |
 | `idle` / `clear` | — | — | no badge |
 
-`done` is set **`--transient`**, so airline clears the badge once you've focused
-the window and moved on — the one transition this plugin can't observe.
+For `done`, Agent reports `result` and Airline treats that phase as transient.
+Airline owns the focus hook and an internal pane revision token, so viewing the
+pane advances the lifecycle without a delayed callback erasing newer workflow
+state. Agent neither handles the revision nor installs a hook.
 `working`/`needs-input` are persistent: the agent's own lifecycle supersedes them
 (working → done/needs-input; needs-input → working when you re-engage).
 
@@ -70,7 +72,7 @@ the window and moved on — the one transition this plugin can't observe.
 > (`result` outranks `active`; there's nothing above `attention`). A run that
 > ends badly is still "the agent wants you" — wire it to `needs-input`.
 
-`clear`/`idle` clear only the calling pane's lifecycle contributor. Provider
+`clear`/`idle` clear only the calling pane's workflow status. Provider
 health is independent and is cleared by that provider's integration.
 
 ## Claude Code resource pressure → health
@@ -84,16 +86,16 @@ condition and shows one gutter glyph:
 
 | Context used | airline condition | In the window list |
 | ------------ | ---------------- | ------------------ |
-| `< 80%` | — (cleared) | clean gutter |
+| `< 80%` | `ok` (no badge) | clean gutter |
 | `≥ 80%` | `warn` (amber) | approaching capacity |
 | `≥ 90%` | `fail` (red) | near capacity — needs attention |
 
 **Usage limit** (`usage` key) — the worse of Claude's 5-hour and 7-day rate-limit
-windows (Claude.ai Pro/Max only; absent otherwise, which reads as cleared):
+windows (Claude.ai Pro/Max only; absent otherwise, which reports `ok`):
 
 | Usage-limit used | airline condition | In the window list |
 | ---------------- | ---------------- | ------------------ |
-| `< 80%` | — (cleared) | clean gutter |
+| `< 80%` | `ok` (no badge) | clean gutter |
 | `≥ 80%` | `warn` (amber) | approaching your limit |
 | `≥ 90%` | `fail` (red) | near your limit |
 
@@ -111,22 +113,24 @@ the pane — but only when you're focused there, which is exactly when you don't
 need tmux to tell you. The one moment they matter across windows is when a window
 is *nearing a ceiling*, and that's an operational condition. Airline maps
 `warn` to its amber alert color and `fail` to its red stress color.
+Elevated conditions retain a diagnostic such as the measured percentage and
+originating pane; Airline exposes it through qualified `health show` output.
 
 Both are exposed through Claude Code's **statusLine** command, so the integration
 is wired there rather than pretending its payload is a provider-neutral format.
 
 If this adapter cannot work as advertised—for example, jq is missing or Claude
 sends malformed JSON—it clears stale health, preserves the status-line pipeline,
-and raises a `fail` problem. Agent resolves the calling pane to one canonical
-tmux session and reports only to that session; it does not project through
-windows linked elsewhere. Missing jq uses the shared key
-`agent-claude-telemetry-jq`. Input and health-update failures use pane-qualified
-keys so recovery in one pane cannot clear another pane's diagnostic. Messages
-are opaque to Airline and may include the originating pane for diagnosis. Agent
-reports current capability on each evaluation, relying on Airline's keyed
-idempotence rather than retaining a second transition marker. Inspect retained
-diagnostics with `airline problem show`; each key clears after its capability
-recovers.
+and raises a global `fail` problem under contributor
+`tmux-agent-tools-claude-telemetry`. The claim retains the calling pane as its
+origin, so every initialized session sees the problem while recovery in one pane
+cannot remove another pane's claim. The stable keys are `jq`, `input`, and
+`health-update`. Detecting that the shared `jq` requirement is restored uses
+`problem resolve`, retiring every stale origin claim. Pane-local input and
+health-update recovery uses `problem set -t ... ok`. Agent never uses the
+user-facing `problem ack` or destructive `problem clear` operations. Ending the telemetry origin closes
+that pane's claims. Inspect active diagnostics with `airline problem show` and
+lifecycle history with `airline problem show --all`.
 
 ## Turn counter → a widget you place
 
@@ -189,19 +193,19 @@ The `⟳` is just text in your format — swap it for any glyph you prefer.
 ## Requirements
 
 - **tmux-airline >= 3.0.0 and < 4.0.0**, providing the `status`, semantic
-  `health` (`ok|warn|fail`), and session-scoped `problem` mutation contract.
+  `health` (`ok|warn|fail`), contributor identities, and global pane-originated
+  `problem` lifecycle contract.
   Agent checks the public `airline version` command before using these channels;
   an absent, broken, malformed, or incompatible installation warns once and
-  otherwise no-ops. Airline owns rendering, transient clearing, and
-  `focus-events`; this plugin touches no private Airline option. The turn counter
+  otherwise no-ops. Airline owns rendering, result observation, revision tracking,
+  hooks, and `focus-events`; this plugin touches no private Airline mechanism. The turn counter
   itself needs only a status line that evaluates tmux formats.
-- `tmux` 3.0+. The `done` badge is `--transient`; airline enables `focus-events`
-  itself the first time a transient signal is set, so its unfocus-clear works
-  with no extra setup here.
+- `tmux` 3.0+. Airline enables `focus-events` when a result is first set and owns
+  its race-safe observation cleanup.
 - [`jq`](https://jqlang.github.io/jq/) — **only** for the Claude Code health
   integration, which reads Claude's statusLine JSON. Without it the integration
   passes the JSON through unchanged, clears stale health, and reports a
-  session-scoped Claude adapter problem. Codex and the provider-neutral
+  global pane-originated Claude adapter problem. Codex and the provider-neutral
   lifecycle and turn modules need no JSON and no jq.
 
 ## Install (TPM)
@@ -315,7 +319,9 @@ The pure mappings are unit-tested; the CLI/tmux writes are checked against a fak
 arguments.
 
 ```bash
-make check    # tests + shellcheck
-make test     # bats test
-make lint     # shellcheck, if installed
+make check                              # portable tests + shellcheck
+make test                               # bats tests
+make lint                               # shellcheck, if installed
+make release-check \
+  AIRLINE_SOURCE=../tmux-airline/airline.sh  # also smoke-test Airline's real parser
 ```

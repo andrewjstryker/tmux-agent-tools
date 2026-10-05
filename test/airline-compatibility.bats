@@ -50,7 +50,7 @@ assert_no_mutation() {
     [[ "$status" -eq 0 ]]
     [[ -z "$output" ]]
     [[ "$(sed -n '1p' "$FAKE_AIRLINE_LOG")" == version ]]
-    grep -qx 'status set agent-3 active -t %3' "$FAKE_AIRLINE_LOG"
+    grep -qx 'status set -t %3 active' "$FAKE_AIRLINE_LOG"
   done
 }
 
@@ -141,5 +141,5 @@ assert_no_mutation() {
   run as_apply working
   [[ "$status" -eq 0 ]]
   [[ -z "$output" ]]
-  grep -qx 'status set agent-3 active -t %3' "$FAKE_AIRLINE_LOG"
+  grep -qx 'status set -t %3 active' "$FAKE_AIRLINE_LOG"
 }

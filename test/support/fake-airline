@@ -21,6 +21,37 @@ if [[ "${1:-}" == version ]]; then
   exit 0
 fi
 
+# Validate the strict status/health shapes Agent depends on. This is intentionally
+# not an Airline implementation. Agent always supplies an explicit pane target, so
+# requiring it here catches a misplaced trailing `-t` that Airline would legally
+# consume as opaque message text while mutating the wrong/default window.
+if [[ "${1:-} ${2:-}" == 'status set' ]]; then
+  [[ $# -eq 5 && "${3:-}" == -t && -n "${4:-}" ]] || exit 64
+  case "$5" in active|result|attention) ;; *) exit 64 ;; esac
+elif [[ "${1:-} ${2:-}" == 'status clear' ]]; then
+  [[ $# -eq 4 && "${3:-}" == -t && -n "${4:-}" ]] || exit 64
+elif [[ "${1:-} ${2:-}" == 'health set' ]]; then
+  [[ "${3:-}" == -t && -n "${4:-}" && -n "${5:-}" && -n "${6:-}" ]] || exit 64
+  case "${7:-}" in
+    ok) [[ $# -eq 7 ]] || exit 64 ;;
+    warn|fail) [[ $# -ge 8 ]] || exit 64 ;;
+    *) exit 64 ;;
+  esac
+elif [[ "${1:-} ${2:-}" == 'health clear' ]]; then
+  [[ $# -eq 6 && "${3:-}" == -t && -n "${4:-}" && -n "${5:-}" && -n "${6:-}" ]] || exit 64
+elif [[ "${1:-} ${2:-}" == 'problem set' ]]; then
+  [[ "${3:-}" == -t && -n "${4:-}" && -n "${5:-}" && -n "${6:-}" ]] || exit 64
+  case "${7:-}" in
+    ok) [[ $# -eq 7 ]] || exit 64 ;;
+    warn|fail) [[ $# -ge 8 ]] || exit 64 ;;
+    *) exit 64 ;;
+  esac
+elif [[ "${1:-} ${2:-}" == 'problem close' ]]; then
+  [[ $# -eq 5 && "${3:-}" == -t && -n "${4:-}" && -n "${5:-}" ]] || exit 64
+elif [[ "${1:-} ${2:-}" == 'problem resolve' ]]; then
+  [[ $# -eq 4 && -n "${3:-}" && -n "${4:-}" ]] || exit 64
+fi
+
 if [[ -n "${FAKE_AIRLINE_FAIL:-}" ]]; then
   case "$*" in
     "$FAKE_AIRLINE_FAIL"|"$FAKE_AIRLINE_FAIL "*)

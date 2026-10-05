@@ -4,23 +4,23 @@
     "SessionStart": [{
       "matcher": "startup|clear",
       "hooks": [
-        { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" SessionStart; fi" }
+        { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook codex SessionStart; fi" }
       ]
     }],
     "UserPromptSubmit": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" UserPromptSubmit; fi" }
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook codex UserPromptSubmit; fi" }
     ] }],
     "PermissionRequest": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" PermissionRequest; fi" }
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook codex PermissionRequest; fi" }
     ] }],
     "PostToolUse": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" PostToolUse; fi" }
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook codex PostToolUse; fi" }
     ] }],
     "Stop": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" Stop; fi" }
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook codex Stop; fi" }
     ] }],
     "SessionEnd": [{ "hooks": [
-      { "type": "command", "command": "bin=\"$(tmux show -gqv @agent-tools-codex-bin 2>/dev/null)\"; if [ -n \"$bin\" ]; then \"$bin\" SessionEnd; fi" }
+      { "type": "command", "command": "cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\"; if [ -n \"$cli\" ]; then \"$cli\" hook codex SessionEnd; fi" }
     ] }]
   }
 }
