@@ -1,14 +1,15 @@
 #!/usr/bin/env bats
 # Tests for lib/lifecycle.sh.
 #
-# The mapping (as_map) is pure. as_apply drives the airline CLI; its calls are
-# checked against a fake `airline` on PATH (pointed at via $AIRLINE_BIN) that
+# The mapping (agent_lifecycle_level) is pure. agent_lifecycle_apply drives the airline CLI; its calls are
+# checked against a fake `airline` on PATH (pointed at via $FAKE_AIRLINE_CLI) that
 # logs its arguments. A fake `tmux` absorbs the refresh-client call. $TMUX/
-# $TMUX_PANE are set so as_apply proceeds (and unset in the no-op test).
+# $TMUX_PANE are set so agent_lifecycle_apply proceeds (and unset in the no-op test).
 
 setup() {
-  SCRIPT="${BATS_TEST_DIRNAME}/../lib/lifecycle.sh"
+  SCRIPT="${BATS_TEST_DIRNAME}/../agent.sh"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/agst.XXXXXX")"
+  export FAKE_TMUX_STATE_DIR="$TESTDIR/tmux-state"
   FAKE_BIN="${TESTDIR}/bin"
   mkdir -p "$FAKE_BIN"
   export FAKE_TMUX_LOG="${TESTDIR}/tmux.log"
@@ -17,7 +18,7 @@ setup() {
   ln -s "${BATS_TEST_DIRNAME}/support/fake-tmux" "${FAKE_BIN}/tmux"
   ln -s "${BATS_TEST_DIRNAME}/support/fake-airline" "${FAKE_BIN}/airline"
   PATH="${FAKE_BIN}:${PATH}"
-  export AIRLINE_BIN="${FAKE_BIN}/airline"
+  export FAKE_AIRLINE_CLI="${FAKE_BIN}/airline"
   export TMUX="/tmp/fake,1,0"
   export TMUX_PANE="%3"
 }
@@ -29,86 +30,85 @@ teardown() {
 # --- mapping ---
 
 @test "map: working -> active" {
-  source "$SCRIPT"; run as_map working; [ "$output" = "active" ]
+  source "$SCRIPT"; run agent_lifecycle_level working; [ "$output" = "active" ]
 }
 
 @test "map: needs-input -> attention" {
-  source "$SCRIPT"; run as_map needs-input; [ "$output" = "attention" ]
+  source "$SCRIPT"; run agent_lifecycle_level needs-input; [ "$output" = "attention" ]
 }
 
 @test "map: done -> result" {
-  source "$SCRIPT"; run as_map done; [ "$output" = "result" ]
+  source "$SCRIPT"; run agent_lifecycle_level done; [ "$output" = "result" ]
 }
 
-@test "map: idle and clear -> empty" {
+@test "map: clear -> empty" {
   source "$SCRIPT"
-  run as_map idle;  [ -z "$output" ]
-  run as_map clear; [ -z "$output" ]
+  run agent_lifecycle_level clear; [ -z "$output" ]
 }
 
 @test "map: error is no longer a state (status has no critical level)" {
-  source "$SCRIPT"; run as_map error; [ "$status" -ne 0 ]
+  source "$SCRIPT"; run agent_lifecycle_level error; [ "$status" -ne 0 ]
 }
 
 @test "map: unknown state fails" {
-  source "$SCRIPT"; run as_map bogus; [ "$status" -ne 0 ]
+  source "$SCRIPT"; run agent_lifecycle_level bogus; [ "$status" -ne 0 ]
 }
 
 # --- applying via the airline CLI ---
 
 @test "apply: needs-input sets the pane workflow to attention" {
-  source "$SCRIPT"; as_apply needs-input
+  source "$SCRIPT"; agent_lifecycle_apply needs-input
   grep -q "status set -t %3 attention" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: working sets the pane workflow to active" {
-  source "$SCRIPT"; as_apply working
+  source "$SCRIPT"; agent_lifecycle_apply working
   grep -q "status set -t %3 active" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: done sets the pane workflow to result" {
-  source "$SCRIPT"; as_apply done
+  source "$SCRIPT"; agent_lifecycle_apply done
   grep -q "status set -t %3 result" "$FAKE_AIRLINE_LOG"
   ! grep -q "set-hook\|status clear" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: clear clears the pane workflow" {
-  source "$SCRIPT"; as_apply clear
+  source "$SCRIPT"; agent_lifecycle_apply clear
   grep -q "status clear -t %3" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: clear does not clear independent provider health" {
-  source "$SCRIPT"; as_apply clear
+  source "$SCRIPT"; agent_lifecycle_apply clear
   ! grep -q "health clear" "$FAKE_AIRLINE_LOG"
 }
 
 @test "apply: does not refresh the client itself (airline owns the redraw)" {
-  source "$SCRIPT"; as_apply needs-input
+  source "$SCRIPT"; agent_lifecycle_apply needs-input
   ! grep -q "refresh-client" "$FAKE_TMUX_LOG"
 }
 
 @test "apply: no-op outside tmux" {
   source "$SCRIPT"
   unset TMUX TMUX_PANE
-  as_apply needs-input
+  agent_lifecycle_apply needs-input
   [ ! -s "$FAKE_AIRLINE_LOG" ]
   [ ! -s "$FAKE_TMUX_LOG" ]
 }
 
-@test "apply: missing airline warns and no-ops (does not fail the hook)" {
+@test "apply: missing airline completes initialization without signals" {
   source "$SCRIPT"
-  rm -f "${FAKE_BIN}/airline"; unset AIRLINE_BIN   # no airline anywhere
-  run as_apply working
+  rm -f "${FAKE_BIN}/airline"; unset FAKE_AIRLINE_CLI   # no airline anywhere
+  run agent_lifecycle_apply working
   [ "$status" -eq 0 ]                              # warn, not die
-  [[ "$output" == *"airline CLI not found"* ]]
+  [[ -z "$output" ]]
   [ ! -s "$FAKE_AIRLINE_LOG" ]
 }
 
 @test "apply: missing-airline warning is suppressed once already warned" {
   source "$SCRIPT"
-  rm -f "${FAKE_BIN}/airline"; unset AIRLINE_BIN
+  rm -f "${FAKE_BIN}/airline"; unset FAKE_AIRLINE_CLI
   export FAKE_WARNED=1                             # flag already set this server
-  run as_apply working
+  run agent_lifecycle_apply working
   [ "$status" -eq 0 ]
   [ -z "$output" ]                                 # silent the second time
 }
@@ -116,11 +116,11 @@ teardown() {
 # --- entry point ---
 
 @test "main: unknown state errors" {
-  run bash "$SCRIPT" bogus
+  run bash "$SCRIPT" lifecycle set bogus
   [ "$status" -ne 0 ]
 }
 
 @test "main: requires exactly one argument" {
-  run bash "$SCRIPT"
+  run bash "$SCRIPT" lifecycle set
   [ "$status" -ne 0 ]
 }

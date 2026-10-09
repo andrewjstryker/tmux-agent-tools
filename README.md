@@ -7,7 +7,7 @@ another window.
 - **Status:** working, waiting for permission, or finished responding.
 - **Health:** Claude context-window and usage-limit pressure.
 - **Problems:** failures that prevent Claude telemetry from working.
-- **Turns:** a per-pane conversation counter you can place in your status bar.
+- **Turns:** a conversation-turn widget for Airline or a plain tmux status bar.
 
 Both providers support status and turns; Claude also supplies health telemetry.
 Airline handles badge rendering and lifecycle behavior; see its
@@ -15,9 +15,9 @@ Airline handles badge rendering and lifecycle behavior; see its
 
 ## Install
 
-Requires tmux-airline **3.x**, tmux **3.2+**, and Bash **4.3+**. Claude telemetry
-also requires `jq`. Run Claude Code or Codex inside a tmux pane on the machine
-where these plugins are installed.
+Requires tmux **3.2+**, Bash **4.3+**, and `jq`. Signal reporting also requires
+tmux-airline **3.x**; the turn widget works without Airline. Run Claude Code or
+Codex inside a tmux pane on the machine where the plugin is installed.
 
 With [TPM](https://github.com/tmux-plugins/tpm), add these before TPM's existing
 `run` line in `~/.tmux.conf`, loading Airline first:
@@ -29,22 +29,24 @@ run '~/.tmux/plugins/tpm/tpm'
 ```
 
 Reload with `tmux source-file ~/.tmux.conf`, then press **prefix + I** to install.
-For an existing checkout, see [manual installation](docs/usage.md#manual-installation).
+Agent initializes once per session and registers its widget directory when
+Airline is loaded. Run `agent init` to repeat setup after changing Airline.
+For an existing checkout or a setup without Airline, see [manual installation](USAGE.md#manual-installation).
 
 ## Connect your agents
 
 Installing the tmux plugin does not install provider hooks. Follow the setup
 for each provider you use:
 
-- **[Claude Code setup](docs/usage.md#claude-code):** install the hook configuration,
+- **[Claude Code setup](USAGE.md#claude-code):** install the hook configuration,
   optionally connect context/usage telemetry, and verify it.
-- **[Codex setup](docs/usage.md#codex):** install and trust the hook configuration,
+- **[Codex setup](USAGE.md#codex):** install and trust the hook configuration,
   then verify it.
 
-The [usage guide](docs/usage.md) also covers the
-[turn counter](docs/usage.md#show-the-turn-counter),
-[health thresholds](docs/usage.md#health-thresholds), and
-[troubleshooting](docs/usage.md#troubleshooting).
+The [usage guide](USAGE.md) also covers the
+[turn counter](USAGE.md#show-the-turn-counter),
+[health thresholds](USAGE.md#health-thresholds), and
+[troubleshooting](USAGE.md#troubleshooting).
 
 ## Command line
 

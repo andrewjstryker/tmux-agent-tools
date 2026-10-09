@@ -1,6 +1,6 @@
 # Usage guide
 
-[Install the tmux plugin](../README.md#install) first, then configure
+[Install the tmux plugin](README.md#install) first, then configure
 [Claude Code](#claude-code), [Codex](#codex), or both.
 
 ## Check the installation
@@ -14,15 +14,41 @@ tmux show -gqv @airline-cli
 "$(tmux show -gqv @airline-cli)" version
 ```
 
-The first two commands should print executable paths; the last two should print
-versions. Airline must report `3.x.x`. Hook commands use these handles, so you
-do not need to install the optional `agent` shell command for hooks to work.
+The Agent handle should print an executable path. If Airline is loaded, its
+handle should also print a path and its version should be `3.x.x`. For a
+standalone turn widget, skip the Airline commands. Hook commands use the
+published handles, so the optional `agent` shell command is not required.
+
+## Initialization
+
+The plugin loader initializes Agent in its current tmux session. Operational
+commands also initialize on first use in a session. Initialization checks
+Airline's version and registers the widget directory only when `@airline-cli`
+is published. It never starts Airline or searches for an executable on `PATH`.
+
+The session option `@agent-tools-init` records that setup was attempted, including
+when Airline is absent or incompatible. Later invocations reuse that result.
+Turn counting remains available without Airline. The session option
+`@agent-tools-airline-cli` records the CLI accepted during initialization;
+Agent stops reporting signals if Airline withdraws or changes its published handle.
+
+After loading, upgrading, or repairing Airline, reset and repeat initialization:
+
+```sh
+"$(tmux show -gqv @agent-cli)" init
+# Or, with the optional shell command installed:
+agent init
+```
+
+`init` clears the marker and performs setup again for the current session. It
+preserves turn counts and existing signals. Reloading `agent.tmux` does the same.
+`help`, `version`, and standalone widget formatting do not initialize anything.
 
 ## Claude Code
 
 ### Install lifecycle hooks
 
-Open [`examples/claude-settings.json`](../examples/claude-settings.json).
+Open [`examples/claude-settings.json`](examples/claude-settings.json).
 If `~/.claude/settings.json` does not exist, create its parent directory and copy
 the example there. Otherwise, merge the example's `hooks` object into that file:
 add missing event entries and append to existing event arrays. Preserve your
@@ -73,7 +99,7 @@ appears when a measurement reaches its warning threshold; inspect failures with:
 
 ## Codex
 
-Open [`examples/codex-hooks.json`](../examples/codex-hooks.json).
+Open [`examples/codex-hooks.json`](examples/codex-hooks.json).
 Create `~/.codex/hooks.json` from it if the file does not exist. If it does,
 append the example entries to the corresponding arrays under `hooks`, preserving
 existing hooks. Use the corresponding location under `CODEX_HOME` if customized.
@@ -94,30 +120,66 @@ turn counts for Codex; it does not supply Codex health telemetry.
 ## Show the turn counter
 
 Each prompt hook increments the calling pane's `@agent-tools-turns` option.
-The following shell commands place the active pane's count in Airline's
-right-inner segment, replacing that slot's existing content:
+The `agent-turns` widget renders that value as `<n>⟳` using a native tmux format;
+it has no background process or dependency on Airline. An unset count renders
+no text.
+
+### With Airline
+
+Agent's loader registers its widget directory in the current Airline session.
+Check registration from that session with:
 
 ```sh
-tmux set -g @airline-segment-right-in '#{?@agent-tools-turns, #{@agent-tools-turns}⟳,}'
-"$(tmux show -gqv @airline-cli)" session apply
+"$(tmux show -gqv @airline-cli)" widget describe agent-turns
 ```
 
-Run `session apply` in each session where you want the override applied. The count
-text is blank when unset; a configured segment can still retain spacing and
-chevrons. To remove the override, unset the option and reapply:
+Include the widget in an Airline layout. For example, save this as
+`~/.config/airline/layouts/agent.sh` (create the directory first):
+
+```bash
+airline_layout_configure() {
+  "$1" segment left-out '#S'
+  "$1" segment right-in '#{E:@airline--widget-agent-turns}'
+}
+```
+
+Then load it from your shell:
 
 ```sh
-tmux set -gu @airline-segment-right-in
-"$(tmux show -gqv @airline-cli)" session apply
+"$(tmux show -gqv @airline-cli)" layout load "$HOME/.config/airline/layouts/agent.sh"
 ```
 
-For a persistent arrangement, add the format to your Airline layout; see
-[Airline layouts](https://github.com/andrewjstryker/tmux-airline/blob/main/docs/layouts.md).
-For a plain tmux status line, use:
+This example replaces the current arrangement. To keep your existing layout,
+add the widget reference to one of its segment declarations instead. The
+containing segment retains its spacing and chevrons when the count is unset.
+See [Airline layouts](https://github.com/andrewjstryker/tmux-airline/blob/main/docs/layouts.md)
+for persistent layout configuration.
+
+Catalog registration belongs to each Airline session. In an additional session,
+run Agent initialization after initializing Airline and before loading the layout:
 
 ```sh
-tmux set -ga status-right '#{?@agent-tools-turns, #{@agent-tools-turns}⟳,}'
+"$(tmux show -gqv @agent-cli)" init
 ```
+
+### Without Airline
+
+Load Agent normally, omitting Airline from your tmux plugin configuration.
+To append the widget to a plain status line, run this once in your shell:
+
+```sh
+cli="$(tmux show -gqv @agent-cli)"
+tmux set -ga status-right " $(bash "${cli%/*}/widgets/agent-turns.sh")"
+```
+
+For a persistent setup, the equivalent native format can go in `~/.tmux.conf`:
+
+```tmux
+set -ga status-right ' #{?@agent-tools-turns,#{@agent-tools-turns}⟳,}'
+```
+
+The provider hooks still maintain turns without Airline. Signal reporting is
+silently skipped until Airline is loaded and you run `agent init`.
 
 ## Health thresholds
 
@@ -163,9 +225,9 @@ for badge priorities, result observation, acknowledgement, and recovery.
 
 **No activity badges:** check the published paths above, launch the provider
 inside tmux, and check its hook configuration. Agent requires both `TMUX` and
-`TMUX_PANE`. Missing or incompatible Airline installations warn once per tmux
-server and skip Airline updates. `AIRLINE_BIN` can explicitly select another
-Airline executable for a custom installation.
+`TMUX_PANE`. If Airline was loaded after Agent, run `agent init` in this session.
+An incompatible or broken published Airline CLI produces a diagnostic during
+initialization and disables signal reporting; run `agent init` again after fixing it.
 
 **Hooks loaded but not running:** inspect the provider's `/hooks` controls,
 including Codex trust. Restart the provider after configuration changes and
@@ -200,4 +262,5 @@ run-shell /path/to/tmux-airline/airline.tmux
 run-shell /path/to/tmux-agent-tools/agent.tmux
 ```
 
-Reload with `tmux source-file ~/.tmux.conf`, then follow the provider setup above.
+Omit the Airline line for a standalone turn widget. Reload with
+`tmux source-file ~/.tmux.conf`, then follow the provider setup above.

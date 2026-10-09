@@ -4,17 +4,15 @@
 setup() {
   ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/agadapters.XXXXXX")"
+  export FAKE_TMUX_STATE_DIR="$TESTDIR/tmux-state"
   export ADAPTER_LOG="${TESTDIR}/adapter.log"
   : > "$ADAPTER_LOG"
 
-  for name in state turns context; do
-    script="${TESTDIR}/$name"
-    printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "%s" "$*" >> "$ADAPTER_LOG"\n' "$name" > "$script"
-    chmod +x "$script"
-  done
-  export AGENT_STATE_BIN="${TESTDIR}/state"
-  export AGENT_TURNS_BIN="${TESTDIR}/turns"
-  export CLAUDE_CONTEXT_BIN="${TESTDIR}/context"
+  source "$ROOT/agent.sh"
+  agent_lifecycle_apply() { printf 'state %s\n' "$*" >> "$ADAPTER_LOG"; }
+  agent_turns_apply() { printf 'turns %s\n' "$*" >> "$ADAPTER_LOG"; }
+  agent_claude_telemetry_clear() { printf 'telemetry clear\n' >> "$ADAPTER_LOG"; }
+
 }
 
 teardown() {
@@ -22,23 +20,23 @@ teardown() {
 }
 
 @test "Claude prompt starts work and increments the turn" {
-  "$ROOT/adapters/claude/hooks.sh" UserPromptSubmit
+  agent_claude_hook UserPromptSubmit
   grep -qx "state working" "$ADAPTER_LOG"
   grep -qx "turns bump" "$ADAPTER_LOG"
 }
 
 @test "Claude permission request requests attention" {
-  "$ROOT/adapters/claude/hooks.sh" PermissionRequest
+  agent_claude_hook PermissionRequest
   [ "$(cat "$ADAPTER_LOG")" = "state needs-input" ]
 }
 
 @test "Claude post-tool batch returns to working" {
-  "$ROOT/adapters/claude/hooks.sh" PostToolBatch
+  agent_claude_hook PostToolBatch
   [ "$(cat "$ADAPTER_LOG")" = "state working" ]
 }
 
 @test "Claude stop records a completed result" {
-  "$ROOT/adapters/claude/hooks.sh" Stop
+  agent_claude_hook Stop
   [ "$(cat "$ADAPTER_LOG")" = "state done" ]
 }
 
@@ -46,31 +44,31 @@ teardown() {
   local event
   for event in SessionStart SessionEnd; do
     : > "$ADAPTER_LOG"
-    "$ROOT/adapters/claude/hooks.sh" "$event"
+    agent_claude_hook "$event"
     grep -qx "state clear" "$ADAPTER_LOG"
-    grep -qx "turns reset" "$ADAPTER_LOG"
-    grep -qx "context clear" "$ADAPTER_LOG"
+    grep -qx "turns clear" "$ADAPTER_LOG"
+    grep -qx "telemetry clear" "$ADAPTER_LOG"
   done
 }
 
 @test "Codex prompt starts work and increments the turn" {
-  "$ROOT/adapters/codex/hooks.sh" UserPromptSubmit
+  agent_codex_hook UserPromptSubmit
   grep -qx "state working" "$ADAPTER_LOG"
   grep -qx "turns bump" "$ADAPTER_LOG"
 }
 
 @test "Codex permission request requests attention" {
-  "$ROOT/adapters/codex/hooks.sh" PermissionRequest
+  agent_codex_hook PermissionRequest
   [ "$(cat "$ADAPTER_LOG")" = "state needs-input" ]
 }
 
 @test "Codex post-tool event returns to working" {
-  "$ROOT/adapters/codex/hooks.sh" PostToolUse
+  agent_codex_hook PostToolUse
   [ "$(cat "$ADAPTER_LOG")" = "state working" ]
 }
 
 @test "Codex stop records a completed result" {
-  "$ROOT/adapters/codex/hooks.sh" Stop
+  agent_codex_hook Stop
   [ "$(cat "$ADAPTER_LOG")" = "state done" ]
 }
 
@@ -78,21 +76,21 @@ teardown() {
   local event
   for event in SessionStart SessionEnd; do
     : > "$ADAPTER_LOG"
-    "$ROOT/adapters/codex/hooks.sh" "$event"
+    agent_codex_hook "$event"
     grep -qx "state clear" "$ADAPTER_LOG"
-    grep -qx "turns reset" "$ADAPTER_LOG"
-    ! grep -q "context" "$ADAPTER_LOG"
+    grep -qx "turns clear" "$ADAPTER_LOG"
+    ! grep -q "telemetry" "$ADAPTER_LOG"
   done
 }
 
 @test "provider adapters reject events from the other provider" {
-  run "$ROOT/adapters/codex/hooks.sh" Notification
+  run agent_codex_hook Notification
   [ "$status" -ne 0 ]
-  run "$ROOT/adapters/codex/hooks.sh" PostToolBatch
+  run agent_codex_hook PostToolBatch
   [ "$status" -ne 0 ]
-  run "$ROOT/adapters/claude/hooks.sh" PostToolUse
+  run agent_claude_hook PostToolUse
   [ "$status" -ne 0 ]
-  run "$ROOT/adapters/claude/hooks.sh" Notification
+  run agent_claude_hook Notification
   [ "$status" -ne 0 ]
 }
 
@@ -150,4 +148,15 @@ teardown() {
 claude	claude-settings.json
 codex	codex-hooks.json
 CONFIGS
+}
+
+@test "provider dispatch calls operations in the current shell" {
+  local lifecycle_seen='' turns_seen=''
+  agent_lifecycle_apply() { lifecycle_seen="$1"; }
+  agent_turns_apply() { turns_seen="$1"; }
+  agent_main hook codex UserPromptSubmit
+  [[ "$lifecycle_seen" == working && "$turns_seen" == bump ]]
+  lifecycle_seen='' turns_seen=''
+  agent_main hook claude UserPromptSubmit
+  [[ "$lifecycle_seen" == working && "$turns_seen" == bump ]]
 }

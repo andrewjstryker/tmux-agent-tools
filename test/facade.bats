@@ -4,6 +4,7 @@
 setup() {
   ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/agfacade.XXXXXX")"
+  export FAKE_TMUX_STATE_DIR="$TESTDIR/tmux-state"
   FAKE_BIN="$TESTDIR/bin"
   mkdir -p "$FAKE_BIN"
   export FAKE_TMUX_LOG="$TESTDIR/tmux.log"

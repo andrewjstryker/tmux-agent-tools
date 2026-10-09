@@ -1,52 +1,35 @@
 #!/usr/bin/env bash
 # hooks.sh — translate Claude Code hook events into agent operations.
 
-ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$ADAPTER_DIR/../.." && pwd)"
+agent_claude_hook_error() { printf 'agent hook claude: %s\n' "$*" >&2; return 1; }
 
-CH_STATE_BIN="${AGENT_STATE_BIN:-$PROJECT_DIR/lib/lifecycle.sh}"
-CH_TURNS_BIN="${AGENT_TURNS_BIN:-$PROJECT_DIR/lib/turns.sh}"
-CH_CONTEXT_BIN="${CLAUDE_CONTEXT_BIN:-$ADAPTER_DIR/context.sh}"
-
-ch_die() { printf 'claude-hooks: %s\n' "$*" >&2; return 1; }
-
-ch_apply() {
+agent_claude_hook() {
   case "$1" in
     SessionStart)
-      "$CH_STATE_BIN" clear
-      "$CH_TURNS_BIN" reset
-      "$CH_CONTEXT_BIN" clear
+      agent_lifecycle_apply clear
+      agent_turns_apply clear
+      agent_claude_telemetry_clear
       ;;
     UserPromptSubmit)
-      "$CH_STATE_BIN" working
-      "$CH_TURNS_BIN" bump
+      agent_lifecycle_apply working
+      agent_turns_apply bump
       ;;
     PermissionRequest)
-      "$CH_STATE_BIN" needs-input
+      agent_lifecycle_apply needs-input
       ;;
     PostToolBatch)
-      "$CH_STATE_BIN" working
+      agent_lifecycle_apply working
       ;;
     Stop)
-      "$CH_STATE_BIN" "done"
+      agent_lifecycle_apply "done"
       ;;
     SessionEnd)
-      "$CH_STATE_BIN" clear
-      "$CH_TURNS_BIN" reset
-      "$CH_CONTEXT_BIN" clear
+      agent_lifecycle_apply clear
+      agent_turns_apply clear
+      agent_claude_telemetry_clear
       ;;
     *)
-      ch_die "unknown Claude event: $1"
+      agent_claude_hook_error "unknown Claude event: $1"
       ;;
   esac
 }
-
-ch_main() {
-  set -euo pipefail
-  [ $# -eq 1 ] || ch_die "usage: hooks.sh <SessionStart|UserPromptSubmit|PermissionRequest|PostToolBatch|Stop|SessionEnd>"
-  ch_apply "$1"
-}
-
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  ch_main "$@"
-fi

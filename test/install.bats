@@ -3,6 +3,7 @@
 setup() {
   ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/aginstall.XXXXXX")"
+  export FAKE_TMUX_STATE_DIR="$TESTDIR/tmux-state"
 }
 
 teardown() {

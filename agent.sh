@@ -5,14 +5,20 @@ set -u
 
 AGENT_DIR="${AGENT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
+# shellcheck source=lib/diagnostics.sh
+source "$AGENT_DIR/lib/diagnostics.sh"
+# shellcheck source=lib/airline.sh
+source "$AGENT_DIR/lib/airline.sh"
+# shellcheck source=lib/init.sh
+source "$AGENT_DIR/lib/init.sh"
 # shellcheck source=lib/command.sh
 source "$AGENT_DIR/lib/command.sh"
 # shellcheck source=lib/lifecycle.sh
 source "$AGENT_DIR/lib/lifecycle.sh"
 # shellcheck source=lib/turns.sh
 source "$AGENT_DIR/lib/turns.sh"
-# shellcheck source=adapters/claude/context.sh
-source "$AGENT_DIR/adapters/claude/context.sh"
+# shellcheck source=adapters/claude/telemetry.sh
+source "$AGENT_DIR/adapters/claude/telemetry.sh"
 # shellcheck source=adapters/claude/hooks.sh
 source "$AGENT_DIR/adapters/claude/hooks.sh"
 # shellcheck source=adapters/codex/hooks.sh
@@ -27,7 +33,7 @@ agent_usage_error() {
   agent_command_die "$1 (try: agent help ${2:-})"
 }
 
-cmd_lifecycle() {
+agent_command_lifecycle() {
   local verb="${1:-}"
   shift || true
   # help:begin lifecycle
@@ -38,7 +44,7 @@ cmd_lifecycle() {
         return
       }
       case "$1" in
-        working|needs-input|done) as_apply "$1" ;;
+        working|needs-input|done) agent_lifecycle_apply "$1" ;;
         *) agent_usage_error "lifecycle set: unknown state '$1'" "lifecycle set" ;;
       esac
       ;;
@@ -47,14 +53,14 @@ cmd_lifecycle() {
         agent_usage_error "lifecycle clear: takes no arguments" "lifecycle clear"
         return
       }
-      as_apply clear
+      agent_lifecycle_apply clear
       ;;
     *) agent_usage_error "unknown lifecycle command: $verb" lifecycle ;;
   esac
   # help:end lifecycle
 }
 
-cmd_turns() {
+agent_command_turns() {
   local verb="${1:-}"
   shift || true
   # help:begin turns
@@ -64,21 +70,21 @@ cmd_turns() {
         agent_usage_error "turns bump: takes no arguments" "turns bump"
         return
       }
-      at_apply bump
+      agent_turns_apply bump
       ;;
     clear) #| — clear the calling pane's conversation-turn count
       [[ "$#" -eq 0 ]] || {
         agent_usage_error "turns clear: takes no arguments" "turns clear"
         return
       }
-      at_apply clear
+      agent_turns_apply clear
       ;;
     *) agent_usage_error "unknown turns command: $verb" turns ;;
   esac
   # help:end turns
 }
 
-cmd_hook() {
+agent_command_hook() {
   local provider="${1:-}"
   shift || true
   # help:begin hook
@@ -88,21 +94,21 @@ cmd_hook() {
         agent_usage_error "hook claude: expected one event" "hook claude"
         return
       }
-      ch_apply "$1"
+      agent_claude_hook "$1"
       ;;
     codex) #| <event> — handle one exact, case-sensitive Codex event
       [[ "$#" -eq 1 ]] || {
         agent_usage_error "hook codex: expected one event" "hook codex"
         return
       }
-      cx_apply "$1"
+      agent_codex_hook "$1"
       ;;
     *) agent_usage_error "unknown hook provider: $provider" hook ;;
   esac
   # help:end hook
 }
 
-cmd_telemetry() {
+agent_command_telemetry() {
   local provider="${1:-}"
   shift || true
   # help:begin telemetry
@@ -113,8 +119,8 @@ cmd_telemetry() {
         return
       }
       case "$1" in
-        update) ac_apply ;;
-        clear) ac_clear ;;
+        update) agent_claude_telemetry_update ;;
+        clear) agent_claude_telemetry_clear ;;
         *) agent_usage_error "telemetry claude: unknown command '$1'" "telemetry claude" ;;
       esac
       ;;
@@ -128,10 +134,11 @@ agent_main() {
   shift || true
   # help:begin root
   case "$command" in
-    lifecycle) cmd_lifecycle "$@" ;;
-    turns) cmd_turns "$@" ;;
-    hook) cmd_hook "$@" ;;
-    telemetry) cmd_telemetry "$@" ;;
+    lifecycle) agent_command_lifecycle "$@" ;;
+    turns) agent_command_turns "$@" ;;
+    hook) agent_command_hook "$@" ;;
+    telemetry) agent_command_telemetry "$@" ;;
+    init) agent_command_init "$@" ;; #| — reset and initialize Agent in the current tmux session
     version) agent_command_version "$@" ;; #| — show the Agent release/API version
     help) agent_help_command "$@" ;; #| [<noun> [<verb>]] — show command help
     ""|-h|--help) agent_help_command ;;

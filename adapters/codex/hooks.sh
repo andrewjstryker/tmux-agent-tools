@@ -1,49 +1,33 @@
 #!/usr/bin/env bash
 # hooks.sh — translate Codex hook events into agent operations.
 
-ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$ADAPTER_DIR/../.." && pwd)"
+agent_codex_hook_error() { printf 'agent hook codex: %s\n' "$*" >&2; return 1; }
 
-CX_STATE_BIN="${AGENT_STATE_BIN:-$PROJECT_DIR/lib/lifecycle.sh}"
-CX_TURNS_BIN="${AGENT_TURNS_BIN:-$PROJECT_DIR/lib/turns.sh}"
-
-cx_die() { printf 'codex-hooks: %s\n' "$*" >&2; return 1; }
-
-cx_apply() {
+agent_codex_hook() {
   case "$1" in
     SessionStart)
-      "$CX_STATE_BIN" clear
-      "$CX_TURNS_BIN" reset
+      agent_lifecycle_apply clear
+      agent_turns_apply clear
       ;;
     UserPromptSubmit)
-      "$CX_STATE_BIN" working
-      "$CX_TURNS_BIN" bump
+      agent_lifecycle_apply working
+      agent_turns_apply bump
       ;;
     PermissionRequest)
-      "$CX_STATE_BIN" needs-input
+      agent_lifecycle_apply needs-input
       ;;
     PostToolUse)
-      "$CX_STATE_BIN" working
+      agent_lifecycle_apply working
       ;;
     Stop)
-      "$CX_STATE_BIN" "done"
+      agent_lifecycle_apply "done"
       ;;
     SessionEnd)
-      "$CX_STATE_BIN" clear
-      "$CX_TURNS_BIN" reset
+      agent_lifecycle_apply clear
+      agent_turns_apply clear
       ;;
     *)
-      cx_die "unknown Codex event: $1"
+      agent_codex_hook_error "unknown Codex event: $1"
       ;;
   esac
 }
-
-cx_main() {
-  set -euo pipefail
-  [ $# -eq 1 ] || cx_die "usage: hooks.sh <SessionStart|UserPromptSubmit|PermissionRequest|PostToolUse|Stop|SessionEnd>"
-  cx_apply "$1"
-}
-
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-  cx_main "$@"
-fi

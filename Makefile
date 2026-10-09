@@ -1,6 +1,6 @@
 # tmux-agent-tools — installation and developer tasks.
 
-.PHONY: install check release-check airline-contract test lint
+.PHONY: install check release-check airline-contract widget-integration test lint
 
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
@@ -11,20 +11,22 @@ install:
 
 check: test lint
 
-release-check: check airline-contract
+release-check: check airline-contract widget-integration
 
 airline-contract:
 	@test/airline-contract.sh "$(AIRLINE_SOURCE)"
+
+widget-integration:
+	@test/widget-integration.sh "$(AIRLINE_SOURCE)"
 
 test:
 	bats test
 
 lint:
 	@if command -v shellcheck >/dev/null; then \
-	  shellcheck agent agent.sh agent.tmux lib/*.sh adapters/*/*.sh \
-	    test/support/fake-airline test/support/fake-tmux test/lint-architecture.sh \
-	    test/airline-contract.sh; \
+	  shellcheck agent agent.sh agent.tmux lib/*.sh adapters/*/*.sh widgets/*.sh \
+	    test/support/fake-airline test/support/fake-tmux \
+	    test/airline-contract.sh test/widget-integration.sh; \
 	else \
 	  echo "shellcheck not installed; skipping"; \
 	fi
-	@test/lint-architecture.sh

@@ -5,6 +5,7 @@ setup() {
   ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   CLI="$ROOT/agent.sh"
   TESTDIR="$(mktemp -d "${BATS_TMPDIR:-/tmp}/agent-cli.XXXXXX")"
+  export FAKE_TMUX_STATE_DIR="$TESTDIR/tmux-state"
   DISPATCH_LOG="$TESTDIR/dispatch.log"
   : > "$DISPATCH_LOG"
   export DISPATCH_LOG
@@ -12,15 +13,15 @@ setup() {
   # shellcheck source=../agent.sh
   source "$CLI"
 
-  as_apply() { printf 'lifecycle %s\n' "$*" >> "$DISPATCH_LOG"; }
-  at_apply() { printf 'turns %s\n' "$*" >> "$DISPATCH_LOG"; }
-  ch_apply() { printf 'hook-claude %s\n' "$*" >> "$DISPATCH_LOG"; }
-  cx_apply() { printf 'hook-codex %s\n' "$*" >> "$DISPATCH_LOG"; }
-  ac_apply() {
+  agent_lifecycle_apply() { printf 'lifecycle %s\n' "$*" >> "$DISPATCH_LOG"; }
+  agent_turns_apply() { printf 'turns %s\n' "$*" >> "$DISPATCH_LOG"; }
+  agent_claude_hook() { printf 'hook-claude %s\n' "$*" >> "$DISPATCH_LOG"; }
+  agent_codex_hook() { printf 'hook-codex %s\n' "$*" >> "$DISPATCH_LOG"; }
+  agent_claude_telemetry_update() {
     printf 'telemetry-claude update\n' >> "$DISPATCH_LOG"
     cat
   }
-  ac_clear() { printf 'telemetry-claude clear\n' >> "$DISPATCH_LOG"; }
+  agent_claude_telemetry_clear() { printf 'telemetry-claude clear\n' >> "$DISPATCH_LOG"; }
 }
 
 teardown() {
@@ -195,7 +196,7 @@ assert_dispatch() {
   [[ "$status" -ne 0 ]]
 }
 
-@test "hook dispatch can execute the installed private modules" {
+@test "hook dispatch runs the loaded operations outside tmux" {
   run env -u TMUX -u TMUX_PANE "$CLI" hook claude UserPromptSubmit
   [[ "$status" -eq 0 ]]
 
@@ -211,5 +212,12 @@ assert_dispatch() {
   [[ "$status" -eq 2 ]]
 
   run agent_main help telemetry claude update
+  [[ "$status" -eq 2 ]]
+}
+
+@test "public CLI rejects removed private operation aliases" {
+  run "$CLI" lifecycle set idle
+  [[ "$status" -eq 2 ]]
+  run "$CLI" turns reset
   [[ "$status" -eq 2 ]]
 }
