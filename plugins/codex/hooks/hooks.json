@@ -1,0 +1,78 @@
+{
+  "description": "Report Codex lifecycle state and turns to tmux-agent-tools.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$TMUX\" ] && cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\" && [ -n \"$cli\" ]; then \"$cli\" hook codex SessionStart; fi"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$TMUX\" ] && cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\" && [ -n \"$cli\" ]; then \"$cli\" hook codex UserPromptSubmit; fi"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$TMUX\" ] && cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\" && [ -n \"$cli\" ]; then \"$cli\" hook codex PermissionRequest; fi"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$TMUX\" ] && cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\" && [ -n \"$cli\" ]; then \"$cli\" hook codex PostToolUse; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$TMUX\" ] && cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\" && [ -n \"$cli\" ]; then \"$cli\" hook codex Stop; fi"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$TMUX\" ] && cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\" && [ -n \"$cli\" ]; then \"$cli\" hook codex Interrupt; fi",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$TMUX\" ] && cli=\"$(tmux show -gqv @agent-cli 2>/dev/null)\" && [ -n \"$cli\" ]; then \"$cli\" hook codex SessionEnd; fi",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

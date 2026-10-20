@@ -1,0 +1,11 @@
+{
+  "name": "tmux-agent-tools",
+  "owner": { "name": "Andrew Stryker" },
+  "plugins": [
+    {
+      "name": "tmux-agent-tools",
+      "source": "./plugins/claude",
+      "description": "Report Claude Code activity and conversation turns to tmux-agent-tools in tmux."
+    }
+  ]
+}

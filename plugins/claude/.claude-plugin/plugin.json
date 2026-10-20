@@ -1,0 +1,8 @@
+{
+  "name": "tmux-agent-tools",
+  "description": "Report Claude Code activity and conversation turns to tmux-agent-tools in tmux.",
+  "author": { "name": "Andrew Stryker" },
+  "homepage": "https://github.com/andrewjstryker/tmux-agent-tools",
+  "repository": "https://github.com/andrewjstryker/tmux-agent-tools",
+  "keywords": ["tmux", "tmux-airline", "status"]
+}

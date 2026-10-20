@@ -22,6 +22,10 @@ agent_codex_hook() {
     Stop)
       agent_lifecycle_apply "done"
       ;;
+    Interrupt)
+      # The user interrupted from this pane, so there is no result to announce.
+      agent_lifecycle_apply clear
+      ;;
     SessionEnd)
       agent_lifecycle_apply clear
       agent_turns_apply clear
