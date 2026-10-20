@@ -147,7 +147,6 @@ assert_dispatch() {
     "unknown" \
     "lifecycle unknown" \
     "turns unknown" \
-    "hook unknown Stop" \
     "telemetry unknown update" \
     "telemetry claude unknown"; do
     # Intentional split: these are complete invalid argv vectors.
@@ -167,8 +166,6 @@ assert_dispatch() {
     "lifecycle clear extra" \
     "turns bump extra" \
     "turns clear extra" \
-    "hook claude" \
-    "hook codex Stop extra" \
     "telemetry claude" \
     "telemetry claude clear extra"; do
     # Intentional split: these are complete invalid argv vectors.
@@ -179,11 +176,25 @@ assert_dispatch() {
   done
 }
 
+@test "hook failures never use the providers' blocking exit status" {
+  local argv
+  for argv in \
+    "hook unknown Stop" \
+    "hook claude" \
+    "hook codex Stop extra"; do
+    # Intentional split: these are complete invalid argv vectors.
+    # shellcheck disable=SC2086
+    run agent_main $argv
+    [[ "$status" -eq 1 ]]
+    [[ ! -s "$DISPATCH_LOG" ]]
+  done
+}
+
 @test "provider adapters reject wrong-case and foreign native events" {
   run "$CLI" hook claude sessionstart
   [[ "$status" -ne 0 ]]
 
-  run "$CLI" hook claude Notification
+  run "$CLI" hook claude Interrupt
   [[ "$status" -ne 0 ]]
 
   run "$CLI" hook claude PostToolUse

@@ -124,3 +124,13 @@ teardown() {
   run bash "$SCRIPT" lifecycle set
   [ "$status" -ne 0 ]
 }
+
+@test "hook: Airline's rejection status is reported as a non-blocking failure" {
+  export FAKE_AIRLINE_FAIL='status set' FAKE_AIRLINE_FAIL_STATUS=2
+  run bash "$SCRIPT" lifecycle set done
+  [ "$status" -eq 2 ]
+  run bash "$SCRIPT" hook claude Stop
+  [ "$status" -eq 1 ]
+  run bash "$SCRIPT" hook codex Stop
+  [ "$status" -eq 1 ]
+}

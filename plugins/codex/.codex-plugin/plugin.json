@@ -1,0 +1,9 @@
+{
+  "name": "tmux-agent-tools",
+  "description": "Report Codex activity and conversation turns to tmux-agent-tools in tmux.",
+  "interface": {
+    "displayName": "tmux-agent-tools",
+    "shortDescription": "Codex activity in tmux-airline",
+    "developerName": "Andrew Stryker"
+  }
+}

@@ -31,5 +31,8 @@ outbound arguments. The release check also exercises the selected Airline source
 parser with storage and tmux operations stubbed out, then starts an isolated
 tmux server to check widget rendering, pane isolation, Airline registration,
 layout placement, and a provider hook sequence. Run `make widget-integration`
-without `AIRLINE_SOURCE` to check the widget with tmux alone. Keep provider
-examples and their tests in sync when changing event mappings.
+without `AIRLINE_SOURCE` to check the widget with tmux alone. Keep the provider
+plugins under `plugins/` and their tests in sync when changing event mappings.
+Validate the Claude plugin and marketplace with `claude plugin validate .`.
+Codex reads `.agents/plugins/marketplace.json`; without it, Codex would fall back
+to the Claude marketplace and install the Claude hooks.

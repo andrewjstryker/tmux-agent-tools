@@ -46,24 +46,42 @@ preserves turn counts and existing signals. Reloading `agent.tmux` does the same
 
 ## Claude Code
 
-### Install lifecycle hooks
+### Install the lifecycle plugin
 
-Open [`examples/claude-settings.json`](examples/claude-settings.json).
-If `~/.claude/settings.json` does not exist, create its parent directory and copy
-the example there. Otherwise, merge the example's `hooks` object into that file:
-add missing event entries and append to existing event arrays. Preserve your
-other settings and hooks. Install each Agent hook once to avoid counting turns
-twice. The example includes all lifecycle hooks, but no `statusLine` setting.
+This repository is also a Claude Code plugin marketplace. In Claude Code 2.1.275
+or later, run:
 
-Start a new Claude Code session inside tmux and inspect `/hooks` to confirm the
-commands are loaded. See Claude's [hook reference](https://code.claude.com/docs/en/hooks)
-for settings locations and hook controls.
+```text
+/plugin install tmux-agent-tools --marketplace andrewjstryker/tmux-agent-tools
+```
+
+On earlier versions, add the marketplace first:
+
+```text
+/plugin marketplace add andrewjstryker/tmux-agent-tools
+/plugin install tmux-agent-tools@tmux-agent-tools
+```
+
+Run `/reload-plugins` or start a new session inside tmux, then open `/hooks`: the
+Agent hooks are listed with the `tmux-agent-tools` plugin as their source. The
+plugin contains only hooks. They locate the tmux plugin through `@agent-cli`, so
+upgrading either one does not require changing the other. To pick up plugin
+changes, run `claude plugin marketplace update tmux-agent-tools` and then
+`claude plugin update tmux-agent-tools`.
+
+If you previously copied Agent hooks into a settings file, remove them. Claude
+runs plugin hooks in addition to settings hooks, so turns would count twice.
+To install without the plugin system, merge the `hooks` object from
+[`plugins/claude/hooks/hooks.json`](plugins/claude/hooks/hooks.json) into
+`~/.claude/settings.json` instead. See Claude's
+[plugin guide](https://code.claude.com/docs/en/plugins) and
+[hook reference](https://code.claude.com/docs/en/hooks) for scopes and controls.
 
 ### Add context and usage telemetry (optional)
 
+Plugins cannot configure Claude's status line, so this step edits settings.
 Install `jq` and confirm `jq --version` works in the environment running Claude.
-Add the following top-level setting to `~/.claude/settings.json`, alongside
-`hooks`. This complete example reports telemetry to Airline and displays a short
+Add the following top-level setting to `~/.claude/settings.json`. This complete example reports telemetry to Airline and displays a short
 context reading in Claude:
 
 ```json
@@ -99,19 +117,31 @@ appears when a measurement reaches its warning threshold; inspect failures with:
 
 ## Codex
 
-Open [`examples/codex-hooks.json`](examples/codex-hooks.json).
-Create `~/.codex/hooks.json` from it if the file does not exist. If it does,
-append the example entries to the corresponding arrays under `hooks`, preserving
-existing hooks. Use the corresponding location under `CODEX_HOME` if customized.
-Avoid installing these same hooks in both user and project configuration, since
-matching hooks from multiple sources all run.
+### Install the lifecycle plugin
+
+This repository is also a Codex plugin marketplace. From a shell, run:
+
+```sh
+codex plugin marketplace add andrewjstryker/tmux-agent-tools
+codex plugin add tmux-agent-tools@tmux-agent-tools
+```
 
 Start Codex inside tmux, open `/hooks`, and review and trust the Agent commands.
-Repeat the trust review after changing their definitions. Hooks are enabled by
-default; if you previously disabled them, enable `hooks` under `[features]` in
-your Codex configuration. See the official
-[Codex hook guide](https://learn.chatgpt.com/docs/hooks) for trust and configuration
-controls.
+Codex skips plugin hooks until you trust them; startup warns about any that are
+untrusted. To pick up plugin changes, run `codex plugin marketplace upgrade`,
+then repeat the trust review: Codex treats changed plugin files as modified hooks.
+Hooks are enabled by default; if you previously disabled them, enable `hooks`
+under `[features]` in your Codex configuration.
+
+If you previously copied Agent hooks into `hooks.json` or `config.toml`, remove
+them. Codex runs every matching hook from every source, so turns would count
+twice. To install without the plugin system, merge the `hooks` object from
+[`plugins/codex/hooks/hooks.json`](plugins/codex/hooks/hooks.json) into
+`~/.codex/hooks.json` instead, then trust it the same way. See the official
+[Codex hook guide](https://learn.chatgpt.com/docs/hooks) for trust and
+configuration controls.
+
+### Verify Codex
 
 Submit a prompt and check for working followed by a completed result. A tool
 permission request should show attention. This integration supplies status and
@@ -210,12 +240,27 @@ Use `agent help` or, without the optional shell installation,
 | `UserPromptSubmit` | Working status and incremented turn count |
 | `PermissionRequest` | Needs-input status |
 | Claude `PostToolBatch` / Codex `PostToolUse` | Working status |
-| `Stop` | Done status |
+| `Stop`, Claude `StopFailure` | Done status |
+| Codex `Interrupt` | Clear status, keeping the turn count |
 | `SessionStart` matching `startup` or `clear` | Clear provider state |
-| `SessionEnd` | Clear provider state |
+| `SessionEnd` (Claude: matching `prompt_input_exit`, `logout`, or `other`) | Clear provider state |
 
 Claude cleanup includes telemetry; Codex cleanup covers lifecycle and turns.
-Resume and compaction do not reset state with the supplied configuration.
+Resume, fork, and compaction do not reset state with the supplied configuration.
+Claude sends `StopFailure` instead of `Stop` when an API error, such as a rate
+limit, ends the turn.
+
+Claude runs no hook when you interrupt a turn, so its working status remains
+until the next turn finishes or you [clear it](#troubleshooting). Codex reports
+interrupts and clears the status itself.
+
+After you approve a permission request, both providers report nothing until the
+tool finishes, so a long approved command keeps the attention status until then.
+When the window is already on screen, Airline treats the request as seen
+immediately and shows no status.
+
+Hooks only observe; they never block a prompt, a tool, or the end of a turn. A
+failed hook exits with status 1, which Claude and Codex treat as non-blocking.
 Working, needs-input, and done map to Airline's `active`, `attention`, and
 `result`. Done means the agent finished responding, not that its task succeeded.
 See [Airline signals](https://github.com/andrewjstryker/tmux-airline/blob/main/docs/signals.md)
@@ -233,8 +278,9 @@ initialization and disables signal reporting; run `agent init` again after fixin
 including Codex trust. Restart the provider after configuration changes and
 check that hook commands can find `tmux` and Bash on `PATH`.
 
-**Turn count increases twice:** remove duplicate Agent hooks from user/project
-configuration. Inspect the value with
+**Turn count increases twice:** the Agent hooks are installed twice, typically
+as a plugin and in a settings or `hooks.json` file. Keep the plugin and remove
+the copied hooks. Inspect the value with
 `tmux show -pqv -t "$TMUX_PANE" @agent-tools-turns`.
 
 **Claude telemetry is missing:** confirm the `statusLine` setting is present and
@@ -242,8 +288,10 @@ configuration. Inspect the value with
 failures under `tmux-agent-tools-claude-telemetry`. Low or absent measurements
 leave the health gutter clear.
 
-**Stale state after an interrupted session:** run these from the affected pane's
-shell (omit the telemetry command for Codex):
+**Stale state after an interrupted turn or session:** a Claude turn you
+interrupt keeps its working status until the next turn finishes. To clear it
+now, or to reset a session that ended abnormally, run these from the affected
+pane's shell (omit the telemetry command for Codex):
 
 ```sh
 cli="$(tmux show -gqv @agent-cli)"

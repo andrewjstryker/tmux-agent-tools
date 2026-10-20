@@ -35,13 +35,25 @@ For an existing checkout or a setup without Airline, see [manual installation](U
 
 ## Connect your agents
 
-Installing the tmux plugin does not install provider hooks. Follow the setup
-for each provider you use:
+Installing the tmux plugin does not install provider hooks. This repository is
+also a plugin marketplace for both providers. In Claude Code 2.1.275 or later:
 
-- **[Claude Code setup](USAGE.md#claude-code):** install the hook configuration,
-  optionally connect context/usage telemetry, and verify it.
-- **[Codex setup](USAGE.md#codex):** install and trust the hook configuration,
-  then verify it.
+```text
+/plugin install tmux-agent-tools --marketplace andrewjstryker/tmux-agent-tools
+```
+
+For Codex, install the plugin from a shell, then trust its hooks in `/hooks`:
+
+```sh
+codex plugin marketplace add andrewjstryker/tmux-agent-tools
+codex plugin add tmux-agent-tools@tmux-agent-tools
+```
+
+Then follow the setup for each provider you use:
+
+- **[Claude Code setup](USAGE.md#claude-code):** earlier Claude versions,
+  optional context/usage telemetry, and verification.
+- **[Codex setup](USAGE.md#codex):** hook trust, upgrades, and verification.
 
 The [usage guide](USAGE.md) also covers the
 [turn counter](USAGE.md#show-the-turn-counter),

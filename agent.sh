@@ -84,7 +84,14 @@ agent_command_turns() {
   # help:end turns
 }
 
+# Providers give exit status 2 a control meaning: blocking a prompt, continuing a
+# stopped turn, or replacing a tool result. Agent only observes events, so every
+# hook failure, including Airline's rejection status, becomes a non-blocking 1.
 agent_command_hook() {
+  agent_command_hook_dispatch "$@" || return 1
+}
+
+agent_command_hook_dispatch() {
   local provider="${1:-}"
   shift || true
   # help:begin hook

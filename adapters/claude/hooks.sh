@@ -20,7 +20,8 @@ agent_claude_hook() {
     PostToolBatch)
       agent_lifecycle_apply working
       ;;
-    Stop)
+    Stop|StopFailure)
+      # An API error ends the turn with StopFailure instead of Stop.
       agent_lifecycle_apply "done"
       ;;
     SessionEnd)
