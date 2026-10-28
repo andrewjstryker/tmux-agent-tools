@@ -131,6 +131,7 @@ teardown() {
   [ "$status" -eq 2 ]
   run bash "$SCRIPT" hook claude Stop
   [ "$status" -eq 1 ]
-  run bash "$SCRIPT" hook codex Stop
+  # Codex resolves its pane by ancestry: the hook descends from this test.
+  FAKE_TMUX_PANES="%3 $$" run bash "$SCRIPT" hook codex Stop
   [ "$status" -eq 1 ]
 }

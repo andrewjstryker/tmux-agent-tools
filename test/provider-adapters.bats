@@ -12,6 +12,8 @@ setup() {
   agent_lifecycle_apply() { printf 'state %s\n' "$*" >> "$ADAPTER_LOG"; }
   agent_turns_apply() { printf 'turns %s\n' "$*" >> "$ADAPTER_LOG"; }
   agent_claude_telemetry_clear() { printf 'telemetry clear\n' >> "$ADAPTER_LOG"; }
+  agent_codex_pane_resolve() { printf '%%7'; }
+  agent_codex_pane_release() { :; }
   CLAUDE_HOOKS="$ROOT/plugins/claude/hooks/hooks.json"
   CODEX_HOOKS="$ROOT/plugins/codex/hooks/hooks.json"
 
@@ -93,6 +95,19 @@ teardown() {
     grep -qx "turns clear" "$ADAPTER_LOG"
     ! grep -q "telemetry" "$ADAPTER_LOG"
   done
+}
+
+@test "Codex operations target the resolved session pane" {
+  agent_lifecycle_apply() { printf 'state %s %s\n' "$1" "$TMUX_PANE" >> "$ADAPTER_LOG"; }
+  TMUX_PANE=%9 agent_codex_hook Stop
+  [ "$(cat "$ADAPTER_LOG")" = "state done %7" ]
+}
+
+@test "Codex operations get no pane when the session pane is unknown" {
+  agent_codex_pane_resolve() { return 1; }
+  agent_lifecycle_apply() { printf 'state %s [%s]\n' "$1" "$TMUX_PANE" >> "$ADAPTER_LOG"; }
+  TMUX_PANE=%9 agent_codex_hook Stop
+  [ "$(cat "$ADAPTER_LOG")" = "state done []" ]
 }
 
 @test "provider adapters reject events from the other provider" {
