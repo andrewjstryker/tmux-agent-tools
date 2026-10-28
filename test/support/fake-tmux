@@ -7,6 +7,12 @@ if [[ -n "${FAKE_TMUX_LOG:-}" ]]; then
   printf '%s\n' "$*" >> "$FAKE_TMUX_LOG"
 fi
 
+# Lines of "pane_id pane_pid" for pane lookups.
+if [[ "${1:-}" == list-panes ]]; then
+  [[ -z "${FAKE_TMUX_PANES:-}" ]] || printf '%s\n' "$FAKE_TMUX_PANES"
+  exit 0
+fi
+
 if [[ "${1:-}" == display-message ]]; then
   printf '%s' "${FAKE_SESSION:-\$0}"
   exit 0

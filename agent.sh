@@ -21,6 +21,8 @@ source "$AGENT_DIR/lib/turns.sh"
 source "$AGENT_DIR/adapters/claude/telemetry.sh"
 # shellcheck source=adapters/claude/hooks.sh
 source "$AGENT_DIR/adapters/claude/hooks.sh"
+# shellcheck source=adapters/codex/pane.sh
+source "$AGENT_DIR/adapters/codex/pane.sh"
 # shellcheck source=adapters/codex/hooks.sh
 source "$AGENT_DIR/adapters/codex/hooks.sh"
 
